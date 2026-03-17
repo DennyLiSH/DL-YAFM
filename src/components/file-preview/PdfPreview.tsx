@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface PdfPreviewProps {
-  filePath: string;
+  filePath: string; // base64 encoded PDF data
 }
 
 export function PdfPreview({ filePath }: PdfPreviewProps) {
@@ -18,11 +18,41 @@ export function PdfPreview({ filePath }: PdfPreviewProps) {
   const [scale, setScale] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const prevUrlRef = useRef<string | null>(null);
 
+  // Convert base64 to Blob URL
   useEffect(() => {
     setLoading(true);
     setError(null);
     setPageNumber(1);
+
+    // Clean up previous URL
+    if (prevUrlRef.current) {
+      URL.revokeObjectURL(prevUrlRef.current);
+    }
+
+    try {
+      const binaryString = atob(filePath);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      prevUrlRef.current = url;
+      setFileUrl(url);
+    } catch (err) {
+      setError(`PDF 数据转换失败: ${err instanceof Error ? err.message : String(err)}`);
+      setLoading(false);
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (prevUrlRef.current) {
+        URL.revokeObjectURL(prevUrlRef.current);
+      }
+    };
   }, [filePath]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -44,6 +74,14 @@ export function PdfPreview({ filePath }: PdfPreviewProps) {
     return (
       <div className="h-full flex items-center justify-center text-destructive">
         {error}
+      </div>
+    );
+  }
+
+  if (!fileUrl) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -86,7 +124,7 @@ export function PdfPreview({ filePath }: PdfPreviewProps) {
       {/* PDF container */}
       <div className="flex-1 overflow-auto flex justify-center bg-muted/30 p-4">
         <Document
-          file={filePath}
+          file={fileUrl}
           onLoadSuccess={onDocumentLoadSuccess}
           onLoadError={onDocumentLoadError}
           loading={

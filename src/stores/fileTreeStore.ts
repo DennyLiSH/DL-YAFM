@@ -143,35 +143,40 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
     try {
       const children = await fileService.getDirectoryEntries(path);
-      const newCache = new Map(get().nodeCache);
-      newCache.set(path, {
+      const updatedCache = new Map(get().nodeCache);
+      updatedCache.set(path, {
         children,
         isLoaded: true,
         isLoading: false,
       });
-      set({ nodeCache: newCache, error: null });
+      set({ nodeCache: updatedCache, error: null });
     } catch (err) {
-      const newCache = new Map(get().nodeCache);
-      newCache.set(path, {
+      const errorCache = new Map(get().nodeCache);
+      errorCache.set(path, {
         children: [],
         isLoaded: false,
         isLoading: false,
         error: String(err),
       });
-      set({ nodeCache: newCache, error: String(err) });
+      set({ nodeCache: errorCache, error: String(err) });
     }
   },
 
   loadRootEntries: async () => {
-    const { rootPath } = get();
+    const { rootPath, isLoading } = get();
+
+    // 防止重复调用
+    if (isLoading) return;
     if (!rootPath) return;
 
     set({ isLoading: true, error: null });
     try {
       const entries = await fileService.getDirectoryEntries(rootPath);
-      set({ rootEntries: entries, isLoading: false });
+      set({ rootEntries: entries });
     } catch (err) {
-      set({ error: String(err), isLoading: false });
+      set({ error: String(err) });
+    } finally {
+      set({ isLoading: false });
     }
   },
 
@@ -202,14 +207,16 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       return;
     }
 
-    // Refresh specific node
+    // Reset cache state to force reload (instead of deleting to avoid race condition)
     const newCache = new Map(nodeCache);
+    const cached = newCache.get(path);
     newCache.set(path, {
-      children: [],
+      children: cached?.children || [],
       isLoaded: false,
       isLoading: false,
     });
     set({ nodeCache: newCache });
+
     await get().loadNodeChildren(path);
   },
 
@@ -265,15 +272,19 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   },
 
   refreshBrowse: async () => {
-    const { currentBrowsePath } = get();
+    const { currentBrowsePath, isLoadingBrowse } = get();
+
+    if (isLoadingBrowse) return;
     if (!currentBrowsePath) return;
 
     set({ isLoadingBrowse: true });
     try {
       const entries = await fileService.getDirectoryEntries(currentBrowsePath);
-      set({ browseEntries: entries, isLoadingBrowse: false });
+      set({ browseEntries: entries });
     } catch (err) {
-      set({ browseEntries: [], isLoadingBrowse: false, error: String(err) });
+      set({ browseEntries: [], error: String(err) });
+    } finally {
+      set({ isLoadingBrowse: false });
     }
   },
 
@@ -316,8 +327,9 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
           isLoadingPreview: false,
         });
       } else if (ext === 'pdf') {
-        // PDF preview - use file path directly
-        set({ previewContent: entry.path, previewType: 'pdf', isLoadingPreview: false });
+        // PDF preview - read as base64 and convert to Uint8Array in component
+        const base64 = await fileService.readFileAsBase64(entry.path);
+        set({ previewContent: base64, previewType: 'pdf', isLoadingPreview: false });
       } else {
         // Unsupported file type
         set({

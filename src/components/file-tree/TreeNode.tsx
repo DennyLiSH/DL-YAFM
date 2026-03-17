@@ -78,12 +78,18 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
   const [isDragOver, setIsDragOver] = useState(false);
   const dragTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 使用 ref 追踪是否正在加载，避免 useEffect 无限循环
+  const loadingRef = useRef(false);
+
   useEffect(() => {
-    // Load children when node is expanded for the first time
-    if (isExpanded && entry.is_dir && !nodeState?.isLoaded && !isLoading) {
-      loadNodeChildren(entry.path);
+    // Load children when node is expanded
+    if (isExpanded && entry.is_dir && !loadingRef.current) {
+      loadingRef.current = true;
+      loadNodeChildren(entry.path).finally(() => {
+        loadingRef.current = false;
+      });
     }
-  }, [isExpanded, entry.is_dir, entry.path, nodeState?.isLoaded, isLoading, loadNodeChildren]);
+  }, [isExpanded, entry.is_dir, entry.path, loadNodeChildren]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();

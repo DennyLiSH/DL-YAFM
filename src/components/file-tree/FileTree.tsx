@@ -42,8 +42,10 @@ export function FileTree() {
     searchResults,
     isSearching,
     clipboardEntry,
+    selectedNode,
     setRootPath,
     loadRootEntries,
+    refreshNode,
     clearError,
     search,
     pasteFromClipboard,
@@ -78,6 +80,17 @@ export function FileTree() {
       console.error('Failed to select folder:', err);
     }
   };
+
+  // 刷新当前选中目录，如果没有选中则刷新根目录
+  const handleRefresh = useCallback(() => {
+    if (selectedNode && selectedNode !== rootPath) {
+      // 刷新选中的节点
+      refreshNode(selectedNode);
+    } else {
+      // 刷新根目录
+      loadRootEntries();
+    }
+  }, [selectedNode, rootPath, refreshNode, loadRootEntries]);
 
   // 防抖搜索
   const handleSearchChange = useCallback((value: string) => {
@@ -239,7 +252,7 @@ export function FileTree() {
             <Button variant="ghost" size="icon" onClick={handleSelectFolder} title="切换文件夹">
               <FolderOpen className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={loadRootEntries} title="刷新">
+            <Button variant="ghost" size="icon" onClick={handleRefresh} title="刷新">
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
@@ -269,7 +282,7 @@ export function FileTree() {
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48">
-          <ContextMenuItem onClick={loadRootEntries}>
+          <ContextMenuItem onClick={handleRefresh}>
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </ContextMenuItem>
