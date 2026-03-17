@@ -1,10 +1,37 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { fileService } from '@/services/fileService';
 import { TreeNode } from './TreeNode';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FolderOpen, RefreshCw } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { NewFolderDialog, NewFileDialog } from '@/components/dialogs';
+import { FolderOpen, RefreshCw, Search, X, GripVertical, Loader2, FolderPlus, FilePlus, ClipboardPaste } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+
+// 列配置类型
+interface ColumnConfig {
+  id: string;
+  label: string;
+  width: string;
+  visible: boolean;
+}
+
+// 默认列配置
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { id: 'type', label: '类型', width: 'w-16', visible: true },
+  { id: 'size', label: '大小', width: 'w-20', visible: true },
+  { id: 'modified', label: '修改日期', width: 'w-28', visible: true },
+  { id: 'created', label: '创建日期', width: 'w-28', visible: true },
+];
 
 export function FileTree() {
   const {
@@ -12,10 +39,27 @@ export function FileTree() {
     rootEntries,
     isLoading,
     error,
+    searchResults,
+    isSearching,
+    clipboardEntry,
     setRootPath,
     loadRootEntries,
     clearError,
+    search,
+    pasteFromClipboard,
   } = useFileTreeStore();
+
+  // 搜索状态
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 列顺序配置
+  const [columns, setColumns] = useState<ColumnConfig[]>(DEFAULT_COLUMNS);
+  // 拖拽状态
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  // 根目录右键菜单对话框状态
+  const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
+  const [showNewFileDialog, setShowNewFileDialog] = useState(false);
 
   useEffect(() => {
     if (rootPath) {
@@ -35,6 +79,141 @@ export function FileTree() {
     }
   };
 
+  // 防抖搜索
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+
+    // 清除之前的定时器
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // 如果搜索词为空，不执行搜索
+    if (!value.trim()) {
+      return;
+    }
+
+    // 300ms 防抖
+    searchTimeoutRef.current = setTimeout(() => {
+      search(value);
+    }, 300);
+  }, [search]);
+
+  // 清空搜索
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+  }, []);
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // 显示的条目：搜索结果或根目录条目
+  const displayEntries = useMemo(() => {
+    if (searchQuery.trim() && searchResults.length > 0) {
+      return searchResults;
+    }
+    if (searchQuery.trim() && !isSearching) {
+      return []; // 搜索完成但无结果
+    }
+    return rootEntries;
+  }, [searchQuery, searchResults, isSearching, rootEntries]);
+
+  // 拖拽开始
+  const handleDragStart = (e: React.DragEvent, columnId: string) => {
+    e.stopPropagation();
+    setDraggedColumn(columnId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', columnId);
+  };
+
+  // 拖拽经过
+  const handleDragOver = (e: React.DragEvent, columnId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedColumn && draggedColumn !== columnId) {
+      setDragOverColumn(columnId);
+    }
+  };
+
+  // 拖拽离开
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+    // 只有离开整个列头时才清除高亮
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (!e.currentTarget.contains(relatedTarget)) {
+      setDragOverColumn(null);
+    }
+  };
+
+  // 拖拽结束
+  const handleDragEnd = () => {
+    setDraggedColumn(null);
+    setDragOverColumn(null);
+  };
+
+  // 拖拽放下
+  const handleDrop = (e: React.DragEvent, targetColumnId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedColumn || draggedColumn === targetColumnId) {
+      setDraggedColumn(null);
+      setDragOverColumn(null);
+      return;
+    }
+
+    // 重新排列列顺序
+    setColumns((prev) => {
+      const newColumns = [...prev];
+      const draggedIndex = newColumns.findIndex((c) => c.id === draggedColumn);
+      const targetIndex = newColumns.findIndex((c) => c.id === targetColumnId);
+
+      if (draggedIndex !== -1 && targetIndex !== -1) {
+        const [removed] = newColumns.splice(draggedIndex, 1);
+        newColumns.splice(targetIndex, 0, removed);
+      }
+
+      return newColumns;
+    });
+
+    setDraggedColumn(null);
+    setDragOverColumn(null);
+  };
+
+  // 渲染列表头
+  const renderColumnHeader = (column: ColumnConfig) => (
+    <div
+      key={column.id}
+      draggable
+      onDragStart={(e) => handleDragStart(e, column.id)}
+      onDragOver={(e) => handleDragOver(e, column.id)}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => handleDrop(e, column.id)}
+      onDragEnd={handleDragEnd}
+      className={cn(
+        'text-xs text-muted-foreground font-medium text-right shrink-0 cursor-grab active:cursor-grabbing select-none',
+        'hover:text-foreground transition-colors px-1 py-0.5 rounded',
+        column.width,
+        draggedColumn === column.id && 'opacity-50 cursor-grabbing',
+        dragOverColumn === column.id && 'bg-accent ring-1 ring-primary'
+      )}
+    >
+      <div className="flex items-center justify-end gap-1 pointer-events-none">
+        <GripVertical className="w-3 h-3 opacity-50" />
+        <span>{column.label}</span>
+      </div>
+    </div>
+  );
+
   if (!rootPath) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
@@ -49,23 +228,94 @@ export function FileTree() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b">
-        <div className="flex items-center gap-2">
-          <FolderOpen className="w-4 h-4" />
-          <span className="text-sm font-medium truncate max-w-[200px]" title={rootPath}>
-            {rootPath.split(/[\\/]/).pop() || rootPath}
+      {/* Header with Search and Context Menu */}
+      <ContextMenu>
+        <ContextMenuTrigger className="flex items-center gap-2 px-3 py-2 border-b cursor-context-menu w-full">
+          <FolderOpen className="w-4 h-4 shrink-0" />
+          <span className="text-sm font-medium truncate max-w-[120px]" title={rootPath || ''}>
+            {rootPath?.split(/[\\/]/).pop() || rootPath}
           </span>
-        </div>
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" onClick={handleSelectFolder} title="切换文件夹">
-            <FolderOpen className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={loadRootEntries} title="刷新">
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-      </div>
+          <div className="flex gap-1 ml-auto">
+            <Button variant="ghost" size="icon" onClick={handleSelectFolder} title="切换文件夹">
+              <FolderOpen className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={loadRootEntries} title="刷新">
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+          {/* Search Box */}
+          <div className="relative w-40">
+            {isSearching ? (
+              <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground animate-spin" />
+            ) : (
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+            )}
+            <Input
+              placeholder="搜索..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-6 pr-6 h-7 text-xs"
+            />
+            {searchQuery && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6"
+                onClick={handleClearSearch}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
+          <ContextMenuItem onClick={loadRootEntries}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            刷新
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => setShowNewFolderDialog(true)}>
+            <FolderPlus className="w-4 h-4 mr-2" />
+            新建文件夹
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => setShowNewFileDialog(true)}>
+            <FilePlus className="w-4 h-4 mr-2" />
+            新建文件
+          </ContextMenuItem>
+          {clipboardEntry && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={async () => {
+                if (!rootPath) return;
+                try {
+                  await pasteFromClipboard(rootPath);
+                  toast.success('粘贴成功');
+                  loadRootEntries();
+                } catch (err) {
+                  toast.error(`粘贴失败: ${err}`);
+                }
+              }}>
+                <ClipboardPaste className="w-4 h-4 mr-2" />
+                粘贴
+              </ContextMenuItem>
+            </>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+
+      {/* Root Dialogs */}
+      <NewFolderDialog
+        open={showNewFolderDialog}
+        onOpenChange={setShowNewFolderDialog}
+        parentPath={rootPath || ''}
+        onSuccess={loadRootEntries}
+      />
+      <NewFileDialog
+        open={showNewFileDialog}
+        onOpenChange={setShowNewFileDialog}
+        parentPath={rootPath || ''}
+        onSuccess={loadRootEntries}
+      />
 
       {/* Error */}
       {error && (
@@ -74,20 +324,42 @@ export function FileTree() {
         </div>
       )}
 
+      {/* Column Headers */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b bg-muted/30">
+        <span className="flex-1 text-xs text-muted-foreground font-medium">名称</span>
+        {columns.filter(c => c.visible).map(renderColumnHeader)}
+      </div>
+
       {/* Tree Content */}
       <ScrollArea className="flex-1">
-        {isLoading && rootEntries.length === 0 ? (
+        {isLoading && displayEntries.length === 0 && !searchQuery ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             加载中...
           </div>
-        ) : rootEntries.length === 0 ? (
+        ) : isSearching && displayEntries.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
-            空文件夹
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            搜索中...
+          </div>
+        ) : displayEntries.length === 0 ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            {searchQuery ? '未找到匹配的文件' : '空文件夹'}
+          </div>
+        ) : searchQuery ? (
+          // 搜索结果模式：显示为平铺列表
+          <div className="py-1">
+            <div className="px-2 py-1 text-xs text-muted-foreground border-b mb-1">
+              搜索结果 ({displayEntries.length} 项)
+            </div>
+            {displayEntries.map((entry) => (
+              <TreeNode key={entry.path} entry={entry} depth={0} columns={columns} />
+            ))}
           </div>
         ) : (
+          // 正常模式：显示文件树
           <div className="py-1">
-            {rootEntries.map((entry) => (
-              <TreeNode key={entry.path} entry={entry} depth={0} />
+            {displayEntries.map((entry) => (
+              <TreeNode key={entry.path} entry={entry} depth={0} columns={columns} />
             ))}
           </div>
         )}

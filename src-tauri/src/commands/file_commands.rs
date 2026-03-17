@@ -539,3 +539,49 @@ pub fn search_files(directory: String, query: String) -> Result<Vec<FileEntry>> 
 pub fn check_path_exists(path: String) -> Result<bool> {
     Ok(Path::new(&path).exists())
 }
+
+/// Move a file or directory to a new location
+#[tauri::command]
+pub fn move_entry(source: String, dest: String) -> Result<()> {
+    let src_path = Path::new(&source);
+    let dest_path = Path::new(&dest);
+
+    if !src_path.exists() {
+        return Err(FileExplorerError::PathNotFound(source));
+    }
+
+    // Check if destination already exists
+    if dest_path.exists() {
+        return Err(FileExplorerError::AlreadyExists(dest));
+    }
+
+    // Ensure destination parent directory exists
+    if let Some(dest_parent) = dest_path.parent() {
+        if !dest_parent.exists() {
+            return Err(FileExplorerError::PathNotFound(dest_parent.to_string_lossy().to_string()));
+        }
+    }
+
+    // For directories, check that we're not moving a parent into its child
+    if src_path.is_dir() {
+        let src_canonical = src_path.canonicalize()
+            .map_err(FileExplorerError::from)?;
+        let dest_parent = dest_path.parent()
+            .ok_or_else(|| FileExplorerError::InvalidPath("Invalid destination path".to_string()))?;
+
+        if let Ok(dest_parent_canonical) = dest_parent.canonicalize() {
+            // Check if destination parent is inside source (would create cycle)
+            if dest_parent_canonical.starts_with(&src_canonical) {
+                return Err(FileExplorerError::InvalidPath(
+                    "Cannot move a directory into itself or its subdirectory".to_string()
+                ));
+            }
+        }
+    }
+
+    // Perform the move using fs::rename
+    // This works for both files and directories on the same filesystem
+    fs::rename(src_path, dest_path)?;
+
+    Ok(())
+}

@@ -103,4 +103,9 @@ export const fileService = {
   async checkPathExists(path: string): Promise<boolean> {
     return invoke('check_path_exists', { path });
   },
+
+  // Move entry (file or directory) to a new location
+  async moveEntry(source: string, dest: string): Promise<void> {
+    return invoke('move_entry', { source, dest });
+  },
 };

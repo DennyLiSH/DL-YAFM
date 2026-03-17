@@ -14,6 +14,7 @@ import {
   Copy,
   ClipboardPaste,
   Star,
+  Scissors,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,6 +28,7 @@ interface TreeNodeContextMenuProps {
   onNewFile: () => void;
   onAddBookmark: () => void;
   onCopy: () => void;
+  onCut?: () => void;
   onPaste?: () => void;
   hasClipboard?: boolean;
 }
@@ -40,6 +42,7 @@ export function TreeNodeContextMenu({
   onNewFile,
   onAddBookmark,
   onCopy,
+  onCut,
   onPaste,
   hasClipboard = false,
 }: TreeNodeContextMenuProps) {
@@ -81,6 +84,12 @@ export function TreeNodeContextMenu({
           <Copy className="w-4 h-4 mr-2" />
           复制
         </ContextMenuItem>
+        {onCut && (
+          <ContextMenuItem onClick={onCut}>
+            <Scissors className="w-4 h-4 mr-2" />
+            剪切
+          </ContextMenuItem>
+        )}
         {entry.is_dir && hasClipboard && (
           <ContextMenuItem onClick={onPaste}>
             <ClipboardPaste className="w-4 h-4 mr-2" />

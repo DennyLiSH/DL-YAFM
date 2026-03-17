@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { FileTree } from '@/components/file-tree';
 import { FilePreview } from '@/components/file-preview';
 import { ChatHistory, ChatInput } from '@/components/chat';
-import { SearchBar } from '@/components/search/SearchBar';
 import { TitleBar } from '@/components/TitleBar';
 import { BookmarkList } from '@/components/bookmarks';
 import { ResizablePanel } from '@/components/ui/resizable-panel';
@@ -129,12 +128,11 @@ function App() {
           >
             {/* Center Panel - Chat Area */}
             <main className="h-full border-r flex flex-col">
-              <header className="flex items-center justify-between px-4 py-2 border-b">
+              <header className="flex items-center px-4 py-2 border-b">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />
                   <h1 className="text-lg font-semibold">对话</h1>
                 </div>
-                <SearchBar />
               </header>
               {/* Chat: History + Input */}
               <div className="flex-1 flex flex-col overflow-hidden">

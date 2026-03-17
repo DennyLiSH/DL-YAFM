@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { useBookmarkStore } from '@/stores/bookmarkStore';
 import type { FileEntry } from '@/types/file';
@@ -16,12 +16,29 @@ import {
 import { fileService } from '@/services/fileService';
 import { toast } from 'sonner';
 
+// 列配置类型
+interface ColumnConfig {
+  id: string;
+  label: string;
+  width: string;
+  visible: boolean;
+}
+
 interface TreeNodeProps {
   entry: FileEntry;
   depth: number;
+  columns?: ColumnConfig[];
 }
 
-export function TreeNode({ entry, depth }: TreeNodeProps) {
+// 默认列配置
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { id: 'type', label: '类型', width: 'w-16', visible: true },
+  { id: 'size', label: '大小', width: 'w-20', visible: true },
+  { id: 'modified', label: '修改日期', width: 'w-28', visible: true },
+  { id: 'created', label: '创建日期', width: 'w-28', visible: true },
+];
+
+export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodeProps) {
   const {
     expandedNodes,
     selectedNode,
@@ -37,6 +54,7 @@ export function TreeNode({ entry, depth }: TreeNodeProps) {
     loadFilePreview,
     clearPreview,
     copyToClipboard,
+    cutToClipboard,
     pasteFromClipboard,
   } = useFileTreeStore();
 
@@ -54,6 +72,11 @@ export function TreeNode({ entry, depth }: TreeNodeProps) {
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
+
+  // Drag state
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Load children when node is expanded for the first time
@@ -112,6 +135,11 @@ export function TreeNode({ entry, depth }: TreeNodeProps) {
     toast.success('已复制到剪贴板');
   };
 
+  const handleCut = () => {
+    cutToClipboard(entry);
+    toast.success('已剪切到剪贴板');
+  };
+
   const handlePaste = async () => {
     if (!clipboardEntry) return;
 
@@ -149,14 +177,175 @@ export function TreeNode({ entry, depth }: TreeNodeProps) {
     toast.info('已跳过');
   };
 
+  // ====== Drag and Drop Handlers ======
+
+  // 拖拽开始
+  const handleDragStart = (e: React.DragEvent) => {
+    e.stopPropagation();
+    setIsDragging(true);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', entry.path);
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      path: entry.path,
+      name: entry.name,
+      isDir: entry.is_dir
+    }));
+  };
+
+  // 拖拽结束
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    setIsDragOver(false);
+    if (dragTimeoutRef.current) {
+      clearTimeout(dragTimeoutRef.current);
+      dragTimeoutRef.current = null;
+    }
+  };
+
+  // 拖拽经过（仅文件夹可接收）
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!entry.is_dir) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+
+    // 获取拖拽的数据
+    const dragData = e.dataTransfer.types.includes('application/json');
+    if (!dragData) return;
+
+    setIsDragOver(true);
+
+    // 自动展开文件夹（延迟展开）
+    if (!isExpanded && !dragTimeoutRef.current) {
+      dragTimeoutRef.current = setTimeout(() => {
+        toggleNode(entry.path);
+      }, 800);
+    }
+  };
+
+  // 拖拽离开
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (!e.currentTarget.contains(relatedTarget)) {
+      setIsDragOver(false);
+      if (dragTimeoutRef.current) {
+        clearTimeout(dragTimeoutRef.current);
+        dragTimeoutRef.current = null;
+      }
+    }
+  };
+
+  // 拖拽放下
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (dragTimeoutRef.current) {
+      clearTimeout(dragTimeoutRef.current);
+      dragTimeoutRef.current = null;
+    }
+
+    if (!entry.is_dir) return;
+
+    try {
+      const jsonData = e.dataTransfer.getData('application/json');
+      if (!jsonData) return;
+
+      const dragEntry = JSON.parse(jsonData);
+      const sourcePath = dragEntry.path;
+
+      // 不能拖放到自身
+      if (sourcePath === entry.path) return;
+
+      // 检查是否拖放到子文件夹
+      if (dragEntry.isDir && entry.path.startsWith(sourcePath)) {
+        toast.error('不能将文件夹移动到其子文件夹中');
+        return;
+      }
+
+      // 构建目标路径
+      const destPath = `${entry.path}/${dragEntry.name}`.replace(/\\/g, '/');
+
+      // 检查目标是否已存在
+      const exists = await fileService.checkPathExists(destPath);
+      if (exists) {
+        toast.error('目标位置已存在同名文件或文件夹');
+        return;
+      }
+
+      // 执行移动
+      await fileService.moveEntry(sourcePath, destPath);
+      toast.success(`已移动 "${dragEntry.name}" 到当前文件夹`);
+
+      // 刷新
+      handleRefresh();
+      // 刷新源目录
+      const sourceParent = sourcePath.substring(0, sourcePath.lastIndexOf(/[\\/]/.test(sourcePath) ? (sourcePath.includes('\\') ? '\\' : '/') : '/'));
+      if (sourceParent && sourceParent !== entry.path) {
+        if (sourceParent === rootPath) {
+          loadRootEntries();
+        } else {
+          refreshNode(sourceParent);
+        }
+      }
+    } catch (err) {
+      toast.error(`移动失败: ${getErrorMessage(err)}`);
+    }
+  };
+
   const icon = getFileIcon(entry);
+
+  // 根据列配置渲染对应的单元格
+  const renderColumnCell = (columnId: string) => {
+    switch (columnId) {
+      case 'type':
+        return (
+          <span key={columnId} className="text-xs text-muted-foreground w-16 text-right shrink-0">
+            {entry.is_dir ? '文件夹' : entry.extension || '-'}
+          </span>
+        );
+      case 'size':
+        return !entry.is_dir ? (
+          <span key={columnId} className="text-xs text-muted-foreground w-20 text-right shrink-0">
+            {formatFileSize(entry.size)}
+          </span>
+        ) : (
+          <span key={columnId} className="w-20 shrink-0" />
+        );
+      case 'modified':
+        return (
+          <span key={columnId} className="text-xs text-muted-foreground w-28 text-right shrink-0 hidden md:block">
+            {formatDate(entry.modified_at)}
+          </span>
+        );
+      case 'created':
+        return (
+          <span key={columnId} className="text-xs text-muted-foreground w-28 text-right shrink-0 hidden lg:block">
+            {formatDate(entry.created_at)}
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
 
   // Node content to be wrapped by context menu
   const nodeContent = (
     <div
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={entry.is_dir ? handleDragOver : undefined}
+      onDragLeave={entry.is_dir ? handleDragLeave : undefined}
+      onDrop={entry.is_dir ? handleDrop : undefined}
       className={cn(
         'flex items-center gap-1 px-2 py-1 cursor-pointer rounded hover:bg-accent',
         isSelected && 'bg-accent',
+        isDragging && 'opacity-50',
+        isDragOver && entry.is_dir && 'bg-primary/20 ring-1 ring-primary ring-inset',
       )}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
       onClick={handleClick}
@@ -175,28 +364,8 @@ export function TreeNode({ entry, depth }: TreeNodeProps) {
       {/* Name */}
       <span className="flex-1 truncate text-sm">{entry.name}</span>
 
-      {/* File Type */}
-      <span className="text-xs text-muted-foreground w-16 text-right shrink-0">
-        {entry.is_dir ? '文件夹' : entry.extension || '-'}
-      </span>
-
-      {/* Size (for files) */}
-      {!entry.is_dir && (
-        <span className="text-xs text-muted-foreground w-20 text-right shrink-0">
-          {formatFileSize(entry.size)}
-        </span>
-      )}
-      {entry.is_dir && <span className="w-20" />}
-
-      {/* Modified date */}
-      <span className="text-xs text-muted-foreground w-28 text-right shrink-0 hidden md:block">
-        {formatDate(entry.modified_at)}
-      </span>
-
-      {/* Created date */}
-      <span className="text-xs text-muted-foreground w-28 text-right shrink-0 hidden lg:block">
-        {formatDate(entry.created_at)}
-      </span>
+      {/* Dynamic columns based on configuration */}
+      {columns.filter(c => c.visible).map(col => renderColumnCell(col.id))}
     </div>
   );
 
@@ -211,6 +380,7 @@ export function TreeNode({ entry, depth }: TreeNodeProps) {
         onNewFile={() => setShowNewFileDialog(true)}
         onAddBookmark={handleAddBookmark}
         onCopy={handleCopy}
+        onCut={handleCut}
         onPaste={handlePaste}
         hasClipboard={!!clipboardEntry}
       >
@@ -226,7 +396,7 @@ export function TreeNode({ entry, depth }: TreeNodeProps) {
             </div>
           ) : (
             children.map((child) => (
-              <TreeNode key={child.path} entry={child} depth={depth + 1} />
+              <TreeNode key={child.path} entry={child} depth={depth + 1} columns={columns} />
             ))
           )}
         </div>
