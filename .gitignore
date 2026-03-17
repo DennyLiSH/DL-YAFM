@@ -175,3 +175,4 @@ src-tauri/target/nsis/
 # --- Add your custom rules below ---
 _*/
 .claude/
+test/

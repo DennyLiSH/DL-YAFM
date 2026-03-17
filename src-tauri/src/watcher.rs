@@ -228,10 +228,15 @@ fn handle_file_event(app: &AppHandle, event: &Event) {
         return;
     }
 
-    // Find which watched directory this event belongs to
-    let state = WATCHER_STATE.lock();
+    // Clone watched paths while holding the lock, then release before emitting
+    let watched_paths: Vec<String> = {
+        let state = WATCHER_STATE.lock();
+        state.watched_paths.iter().cloned().collect()
+    };
+
+    // Find which watched directory this event belongs to (lock already released)
     for changed_path in &paths {
-        for watched_path in state.watched_paths.iter() {
+        for watched_path in &watched_paths {
             // Check if the changed path is inside the watched directory
             let changed = Path::new(changed_path);
             let watched = Path::new(watched_path);
@@ -253,7 +258,7 @@ fn handle_file_event(app: &AppHandle, event: &Event) {
                         .unwrap_or(0),
                 };
 
-                // Emit event to frontend
+                // Emit event to frontend (no lock held)
                 if let Err(e) = app.emit("fs-change", &payload) {
                     eprintln!("[watcher] Failed to emit event: {}", e);
                 } else {

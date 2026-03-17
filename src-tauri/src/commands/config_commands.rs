@@ -1,7 +1,7 @@
 use crate::config::ConfigManager;
 use crate::error::{FileExplorerError, Result};
 use crate::models::{AppConfig, Bookmark, ChatMessage, Settings};
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 use uuid::Uuid;
@@ -15,19 +15,13 @@ pub struct AppConfigState {
 
 #[tauri::command]
 pub fn get_settings(state: State<AppConfigState>) -> Result<Settings> {
-    let config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let config = state.inner.lock();
     Ok(config.settings.clone())
 }
 
 #[tauri::command]
 pub fn update_settings(state: State<AppConfigState>, settings: Settings) -> Result<()> {
-    let mut config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let mut config = state.inner.lock();
 
     config.settings = settings;
     config.version = AppConfig::CURRENT_VERSION;
@@ -40,19 +34,13 @@ pub fn update_settings(state: State<AppConfigState>, settings: Settings) -> Resu
 
 #[tauri::command]
 pub fn get_bookmarks(state: State<AppConfigState>) -> Result<Vec<Bookmark>> {
-    let config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let config = state.inner.lock();
     Ok(config.bookmarks.clone())
 }
 
 #[tauri::command]
 pub fn add_bookmark(state: State<AppConfigState>, name: String, path: String) -> Result<Bookmark> {
-    let mut config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let mut config = state.inner.lock();
 
     // Check for duplicate path
     if config.bookmarks.iter().any(|b| b.path == path) {
@@ -80,10 +68,7 @@ pub fn add_bookmark(state: State<AppConfigState>, name: String, path: String) ->
 
 #[tauri::command]
 pub fn remove_bookmark(state: State<AppConfigState>, id: String) -> Result<()> {
-    let mut config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let mut config = state.inner.lock();
 
     let initial_len = config.bookmarks.len();
     config.bookmarks.retain(|b| b.id != id);
@@ -103,10 +88,7 @@ pub fn remove_bookmark(state: State<AppConfigState>, id: String) -> Result<()> {
 
 #[tauri::command]
 pub fn get_chat_messages(state: State<AppConfigState>) -> Result<Vec<ChatMessage>> {
-    let config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let config = state.inner.lock();
     Ok(config.chat_messages.clone())
 }
 
@@ -116,10 +98,7 @@ pub fn add_chat_message(
     role: String,
     content: String,
 ) -> Result<ChatMessage> {
-    let mut config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let mut config = state.inner.lock();
 
     let message = ChatMessage {
         id: Uuid::new_v4().to_string(),
@@ -139,10 +118,7 @@ pub fn add_chat_message(
 
 #[tauri::command]
 pub fn clear_chat_messages(state: State<AppConfigState>) -> Result<()> {
-    let mut config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let mut config = state.inner.lock();
 
     config.chat_messages.clear();
     state.manager.save(&config)?;
@@ -159,10 +135,7 @@ pub fn migrate_from_local_storage(
     bookmarks_json: Option<String>,
     chat_json: Option<String>,
 ) -> Result<()> {
-    let mut config = state
-        .inner
-        .lock()
-        .map_err(|_| FileExplorerError::ConfigError("Lock error".to_string()))?;
+    let mut config = state.inner.lock();
 
     // Only migrate if config is empty (version == 0)
     if config.version > 0 {

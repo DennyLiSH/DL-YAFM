@@ -6,6 +6,7 @@ mod watcher;
 
 use commands::*;
 use config::ConfigManager;
+use parking_lot::Mutex;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,13 +17,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Initialize config manager
-            let manager = ConfigManager::new(&app.handle())
+            let manager = ConfigManager::new(app.handle())
                 .expect("Failed to initialize config manager");
             let config = manager.load().expect("Failed to load config");
 
             // Setup global state
             app.manage(AppConfigState {
-                inner: std::sync::Mutex::new(config),
+                inner: Mutex::new(config),
                 manager,
             });
 

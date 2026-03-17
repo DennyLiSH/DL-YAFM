@@ -27,7 +27,7 @@ pub struct CopyProgress {
 }
 
 /// Global copy task state - simplified approach
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use once_cell::sync::Lazy;
 
 static COPY_CANCEL_FLAGS: Lazy<Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>> =
@@ -67,7 +67,7 @@ pub fn get_directory_entries(path: String) -> Result<Vec<FileEntry>> {
     }
 
     let entries: Vec<FileEntry> = fs::read_dir(dir_path)
-        .map_err(|e| FileExplorerError::from(e))?
+        .map_err(FileExplorerError::from)?
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| FileEntry::from_path(&entry.path()))
         .collect();
@@ -100,19 +100,16 @@ pub fn create_directory(path: String) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn delete_entry(path: String, _recursive: bool) -> Result<()> {
+pub fn delete_entry(path: String, #[allow(unused_variables)] recursive: bool) -> Result<()> {
     let entry_path = Path::new(&path);
-
-    // Debug logging
-    eprintln!("[delete_entry] Input path: {:?}", path);
-    eprintln!("[delete_entry] Entry path: {:?}", entry_path);
-    eprintln!("[delete_entry] Exists: {}", entry_path.exists());
-    eprintln!("[delete_entry] Is dir: {}", entry_path.is_dir());
 
     if !entry_path.exists() {
         return Err(FileExplorerError::PathNotFound(path));
     }
 
+    // Note: `recursive` parameter is currently ignored because trash::delete
+    // always handles both files and directories recursively.
+    // This parameter is kept for API compatibility and future extensions.
     // 使用 trash crate 将文件/文件夹移动到系统回收站
     // trash::delete 会自动处理目录和文件，无需区分
     trash::delete(entry_path)?;
@@ -199,7 +196,7 @@ pub async fn copy_entry_async(
 
     // Create cancellation flag
     let cancelled = Arc::new(AtomicBool::new(false));
-    COPY_CANCEL_FLAGS.lock().unwrap().insert(task_id.clone(), cancelled.clone());
+    COPY_CANCEL_FLAGS.lock().insert(task_id.clone(), cancelled.clone());
 
     let is_dir = src_path.is_dir();
 
@@ -276,7 +273,7 @@ pub async fn copy_entry_async(
     };
 
     // Clean up task
-    COPY_CANCEL_FLAGS.lock().unwrap().remove(&task_id);
+    COPY_CANCEL_FLAGS.lock().remove(&task_id);
 
     // Emit final progress for directory copy (single file already emits)
     if is_dir {
@@ -332,6 +329,43 @@ async fn copy_dir_with_progress(
     total_bytes: u64,
     start_time: Instant,
 ) -> Result<()> {
+    // Use shared counters for accurate progress tracking
+    use std::sync::atomic::{AtomicU64, AtomicUsize};
+
+    let files_copied = Arc::new(AtomicUsize::new(0));
+    let bytes_copied = Arc::new(AtomicU64::new(0));
+
+    copy_dir_recursive(
+        src,
+        dst,
+        cancelled.clone(),
+        app,
+        task_id,
+        source,
+        dest,
+        total_files,
+        total_bytes,
+        start_time,
+        files_copied.clone(),
+        bytes_copied.clone(),
+    ).await
+}
+
+/// Recursive helper function with progress tracking
+async fn copy_dir_recursive(
+    src: &Path,
+    dst: &Path,
+    cancelled: Arc<AtomicBool>,
+    app: &AppHandle,
+    task_id: &str,
+    source: &str,
+    dest: &str,
+    total_files: usize,
+    total_bytes: u64,
+    start_time: Instant,
+    files_copied: Arc<std::sync::atomic::AtomicUsize>,
+    bytes_copied: Arc<std::sync::atomic::AtomicU64>,
+) -> Result<()> {
     if cancelled.load(Ordering::SeqCst) {
         return Err(FileExplorerError::InvalidPath("Operation cancelled".to_string()));
     }
@@ -354,7 +388,7 @@ async fn copy_dir_with_progress(
             .to_string();
 
         if src_path.is_dir() {
-            Box::pin(copy_dir_with_progress(
+            Box::pin(copy_dir_recursive(
                 &src_path,
                 &dst_path,
                 cancelled.clone(),
@@ -365,15 +399,27 @@ async fn copy_dir_with_progress(
                 total_files,
                 total_bytes,
                 start_time,
+                files_copied.clone(),
+                bytes_copied.clone(),
             )).await?;
         } else {
             let copied = tokio::fs::copy(&src_path, &dst_path).await
                 .map_err(FileExplorerError::from)?;
 
+            // Update counters
+            let current_files = files_copied.fetch_add(1, Ordering::SeqCst) + 1;
+            let current_bytes = bytes_copied.fetch_add(copied, Ordering::SeqCst) + copied;
+
             // Emit progress for each file
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed = if elapsed > 0.0 {
-                (total_bytes as f64) / elapsed / 1024.0 / 1024.0
+                (current_bytes as f64) / elapsed / 1024.0 / 1024.0
+            } else {
+                0.0
+            };
+
+            let percentage = if total_bytes > 0 {
+                (current_bytes as f64 / total_bytes as f64) * 100.0
             } else {
                 0.0
             };
@@ -383,11 +429,11 @@ async fn copy_dir_with_progress(
                 source: source.to_string(),
                 dest: dest.to_string(),
                 current_file: file_name,
-                files_copied: 0, // Will be calculated from progress
+                files_copied: current_files,
                 total_files,
-                bytes_copied: 0, // Will be calculated from progress
+                bytes_copied: current_bytes,
                 total_bytes,
-                percentage: (total_bytes as f64 / total_bytes.max(1) as f64) * 100.0,
+                percentage,
                 speed_mbps: speed,
                 is_complete: false,
                 error: None,
@@ -401,7 +447,7 @@ async fn copy_dir_with_progress(
 /// Cancel a copy task
 #[tauri::command]
 pub fn cancel_copy_task(task_id: String) -> bool {
-    if let Some(flag) = COPY_CANCEL_FLAGS.lock().unwrap().get(&task_id) {
+    if let Some(flag) = COPY_CANCEL_FLAGS.lock().get(&task_id) {
         flag.store(true, Ordering::SeqCst);
         true
     } else {

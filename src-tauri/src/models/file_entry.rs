@@ -34,6 +34,16 @@ impl FileEntry {
 
         let is_readonly = metadata.permissions().readonly();
 
+        // Platform-specific hidden file detection
+        #[cfg(windows)]
+        let is_hidden = {
+            use std::os::windows::fs::MetadataExt;
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+            // Check Windows file attributes or name starting with '.'
+            (metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN) != 0 || name.starts_with('.')
+        };
+
+        #[cfg(not(windows))]
         let is_hidden = name.starts_with('.');
 
         let extension = if is_dir {

@@ -47,3 +47,5 @@ impl std::fmt::Display for FileExplorerError {
         }
     }
 }
+
+impl std::error::Error for FileExplorerError {}
