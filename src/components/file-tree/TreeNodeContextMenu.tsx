@@ -15,11 +15,13 @@ import {
   ClipboardPaste,
   Star,
   Scissors,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TreeNodeContextMenuProps {
   entry: FileEntry;
+  selectedCount?: number;
   children: React.ReactNode;
   onRefresh: () => void;
   onRename: () => void;
@@ -30,11 +32,13 @@ interface TreeNodeContextMenuProps {
   onCopy: () => void;
   onCut?: () => void;
   onPaste?: () => void;
+  onClearSelection?: () => void;
   hasClipboard?: boolean;
 }
 
 export function TreeNodeContextMenu({
   entry,
+  selectedCount = 1,
   children,
   onRename,
   onDelete,
@@ -44,8 +48,11 @@ export function TreeNodeContextMenu({
   onCopy,
   onCut,
   onPaste,
+  onClearSelection,
   hasClipboard = false,
 }: TreeNodeContextMenuProps) {
+  const isMultiSelect = selectedCount > 1;
+
   const handleCopyPath = async () => {
     try {
       await navigator.clipboard.writeText(entry.path);
@@ -55,6 +62,43 @@ export function TreeNodeContextMenu({
     }
   };
 
+  // 多选菜单
+  if (isMultiSelect) {
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger>{children}</ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
+          <div className="px-2 py-1.5 text-sm font-medium text-muted-foreground">
+            已选择 {selectedCount} 个项目
+          </div>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={onCopy}>
+            <Copy className="w-4 h-4 mr-2" />
+            复制 {selectedCount} 个项目
+          </ContextMenuItem>
+          {onCut && (
+            <ContextMenuItem onClick={onCut}>
+              <Scissors className="w-4 h-4 mr-2" />
+              剪切 {selectedCount} 个项目
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+            <Trash2 className="w-4 h-4 mr-2" />
+            删除 {selectedCount} 个项目
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          {onClearSelection && (
+            <ContextMenuItem onClick={onClearSelection}>
+              <X className="w-4 h-4 mr-2" />
+              取消选择
+            </ContextMenuItem>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+    );
+  }
+
+  // 单选菜单（原有逻辑）
   return (
     <ContextMenu>
       <ContextMenuTrigger>{children}</ContextMenuTrigger>

@@ -17,7 +17,8 @@ interface FileTreeState {
   rootPath: string | null;
   rootEntries: FileEntry[];
   expandedNodes: Set<string>;
-  selectedNode: string | null;
+  selectedNodes: Set<string>;
+  lastSelectedNode: string | null;
   nodeCache: Map<string, TreeNodeState>;
   searchQuery: string;
   searchResults: FileEntry[];
@@ -38,8 +39,8 @@ interface FileTreeState {
   isLoadingPreview: boolean;
   previewError: string | null;
 
-  // Clipboard state
-  clipboardEntry: ClipboardEntry | null;
+  // Clipboard state (支持多选)
+  clipboardEntries: ClipboardEntry[];
 
   // Watch state
   watchInitialized: boolean;
@@ -66,9 +67,17 @@ interface FileTreeState {
   loadFilePreview: (entry: FileEntry) => Promise<void>;
   clearPreview: () => void;
 
-  // Clipboard actions
+  // Multi-select actions
+  toggleNodeSelection: (path: string, modifier: 'none' | 'ctrl' | 'shift') => void;
+  clearSelection: () => void;
+  selectAll: (parentPath?: string) => void;
+  getSelectedEntries: () => FileEntry[];
+
+  // Clipboard actions (支持多选)
   copyToClipboard: (entry: FileEntry) => void;
   cutToClipboard: (entry: FileEntry) => void;
+  copySelectedToClipboard: (entries: FileEntry[]) => void;
+  cutSelectedToClipboard: (entries: FileEntry[]) => void;
   clearClipboard: () => void;
   pasteFromClipboard: (targetDir: string) => Promise<void>;
 
@@ -84,7 +93,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   rootPath: null,
   rootEntries: [],
   expandedNodes: new Set(),
-  selectedNode: null,
+  selectedNodes: new Set(),
+  lastSelectedNode: null,
   nodeCache: new Map(),
   searchQuery: '',
   searchResults: [],
@@ -105,8 +115,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   isLoadingPreview: false,
   previewError: null,
 
-  // Clipboard initial state
-  clipboardEntry: null,
+  // Clipboard initial state (支持多选)
+  clipboardEntries: [],
 
   // Watch initial state
   watchInitialized: false,
@@ -153,7 +163,116 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     get().syncWatchedPaths();
   },
 
-  selectNode: (path) => set({ selectedNode: path }),
+  selectNode: (path) => {
+    if (path) {
+      set({ selectedNodes: new Set([path]), lastSelectedNode: path });
+    } else {
+      set({ selectedNodes: new Set(), lastSelectedNode: null });
+    }
+  },
+
+  // Multi-select actions
+  toggleNodeSelection: (path, modifier) => {
+    const { selectedNodes, lastSelectedNode, rootPath, nodeCache, rootEntries } = get();
+
+    if (modifier === 'none') {
+      // 普通点击：清除其他选择，只选中当前
+      set({ selectedNodes: new Set([path]), lastSelectedNode: path });
+    } else if (modifier === 'ctrl') {
+      // Ctrl+点击：切换选中状态
+      const newSelected = new Set(selectedNodes);
+      if (newSelected.has(path)) {
+        newSelected.delete(path);
+        if (newSelected.size === 0) {
+          set({ selectedNodes: newSelected, lastSelectedNode: null });
+        } else {
+          set({ selectedNodes: newSelected, lastSelectedNode: path });
+        }
+      } else {
+        newSelected.add(path);
+        set({ selectedNodes: newSelected, lastSelectedNode: path });
+      }
+    } else if (modifier === 'shift' && lastSelectedNode) {
+      // Shift+点击：范围选择
+      // 获取父目录
+      const getParentPath = (p: string) => {
+        const parts = p.split(/[\\/]/);
+        parts.pop();
+        return parts.join(p.includes('\\') ? '\\' : '/');
+      };
+
+      const startParent = getParentPath(lastSelectedNode);
+      const endParent = getParentPath(path);
+
+      // 只允许同目录范围选择
+      if (startParent !== endParent) {
+        // 跨目录则退化为单选
+        set({ selectedNodes: new Set([path]), lastSelectedNode: path });
+        return;
+      }
+
+      // 获取同目录的兄弟节点
+      const siblings = startParent === rootPath
+        ? rootEntries
+        : (nodeCache.get(startParent!)?.children || []);
+
+      if (siblings.length === 0) return;
+
+      // 找到起始和结束索引
+      const startIndex = siblings.findIndex(s => s.path === lastSelectedNode);
+      const endIndex = siblings.findIndex(s => s.path === path);
+
+      if (startIndex === -1 || endIndex === -1) return;
+
+      // 计算范围并选中
+      const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+      const newSelection = new Set<string>();
+      for (let i = from; i <= to; i++) {
+        const sibling = siblings[i];
+        if (sibling) {
+          newSelection.add(sibling.path);
+        }
+      }
+
+      set({ selectedNodes: newSelection, lastSelectedNode: path });
+    }
+  },
+
+  clearSelection: () => set({ selectedNodes: new Set(), lastSelectedNode: null }),
+
+  selectAll: (parentPath) => {
+    const { rootPath, nodeCache, rootEntries, currentBrowsePath } = get();
+    const targetPath = parentPath || currentBrowsePath || rootPath;
+
+    if (!targetPath) return;
+
+    const entries = targetPath === rootPath
+      ? rootEntries
+      : (nodeCache.get(targetPath)?.children || []);
+
+    const newSelection = new Set(entries.map(e => e.path));
+    set({ selectedNodes: newSelection, lastSelectedNode: null });
+  },
+
+  getSelectedEntries: () => {
+    const { selectedNodes, rootPath, nodeCache, rootEntries } = get();
+    const entries: FileEntry[] = [];
+
+    selectedNodes.forEach(path => {
+      // 从 rootEntries 或 nodeCache 中查找
+      const parentPath = path.split(/[\\/]/).slice(0, -1).join(path.includes('\\') ? '\\' : '/');
+      const siblings = parentPath === rootPath || parentPath === ''
+        ? rootEntries
+        : (nodeCache.get(parentPath)?.children || []);
+
+      const entry = siblings.find(e => e.path === path);
+      if (entry) {
+        entries.push(entry);
+      }
+    });
+
+    return entries;
+  },
 
   loadNodeChildren: async (path) => {
     const { nodeCache } = get();
@@ -390,71 +509,99 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
   // Clipboard actions
   copyToClipboard: (entry) => set({
-    clipboardEntry: {
+    clipboardEntries: [{
       sourcePath: entry.path,
       sourceName: entry.name,
       isDir: entry.is_dir,
       isCut: false,
-    },
+    }],
   }),
 
   cutToClipboard: (entry) => set({
-    clipboardEntry: {
+    clipboardEntries: [{
       sourcePath: entry.path,
       sourceName: entry.name,
       isDir: entry.is_dir,
       isCut: true,
-    },
+    }],
   }),
 
-  clearClipboard: () => set({ clipboardEntry: null }),
+  copySelectedToClipboard: (entries) => set({
+    clipboardEntries: entries.map(entry => ({
+      sourcePath: entry.path,
+      sourceName: entry.name,
+      isDir: entry.is_dir,
+      isCut: false,
+    })),
+  }),
+
+  cutSelectedToClipboard: (entries) => set({
+    clipboardEntries: entries.map(entry => ({
+      sourcePath: entry.path,
+      sourceName: entry.name,
+      isDir: entry.is_dir,
+      isCut: true,
+    })),
+  }),
+
+  clearClipboard: () => set({ clipboardEntries: [] }),
 
   pasteFromClipboard: async (targetDir) => {
-    const { clipboardEntry, rootPath } = get();
-    if (!clipboardEntry) return;
+    const { clipboardEntries, rootPath } = get();
+    if (clipboardEntries.length === 0) return;
 
-    const destPath = `${targetDir}/${clipboardEntry.sourceName}`;
-    const taskId = `copy-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const isCut = clipboardEntry.isCut;
-    const sourcePath = clipboardEntry.sourcePath;
+    const isCut = clipboardEntries[0]?.isCut ?? false;
+    const sourcePaths: string[] = [];
 
-    // Subscribe to progress events
-    const unlisten = await fileService.onCopyProgress((progress) => {
-      if (progress.task_id === taskId) {
-        const { addTask, updateTask } = useCopyProgressStore.getState();
-        if (progress.is_complete) {
-          if (progress.error) {
-            // Error occurred
-            updateTask(taskId, progress);
+    // 逐个处理剪贴板条目
+    for (const clipboardEntry of clipboardEntries) {
+      const destPath = `${targetDir}/${clipboardEntry.sourceName}`;
+      const taskId = `copy-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const sourcePath = clipboardEntry.sourcePath;
+      sourcePaths.push(sourcePath);
+
+      // Subscribe to progress events
+      const unlisten = await fileService.onCopyProgress((progress) => {
+        if (progress.task_id === taskId) {
+          const { addTask, updateTask } = useCopyProgressStore.getState();
+          if (progress.is_complete) {
+            if (progress.error) {
+              // Error occurred
+              updateTask(taskId, progress);
+            } else {
+              // Success - remove task after a delay
+              setTimeout(() => {
+                useCopyProgressStore.getState().removeTask(taskId);
+              }, 2000);
+            }
           } else {
-            // Success - remove task after a delay
-            setTimeout(() => {
-              useCopyProgressStore.getState().removeTask(taskId);
-            }, 2000);
-          }
-        } else {
-          // Update progress
-          const task = useCopyProgressStore.getState().tasks.get(taskId);
-          if (task) {
-            updateTask(taskId, progress);
-          } else {
-            addTask(progress);
+            // Update progress
+            const task = useCopyProgressStore.getState().tasks.get(taskId);
+            if (task) {
+              updateTask(taskId, progress);
+            } else {
+              addTask(progress);
+            }
           }
         }
+      });
+
+      try {
+        await fileService.copyEntryAsync(taskId, sourcePath, destPath);
+        // Refresh the target directory after copy starts (will refresh again on complete)
+        get().refreshNode(targetDir);
+      } catch (err) {
+        console.error('Failed to copy:', sourcePath, err);
+      } finally {
+        // Unsubscribe from progress events
+        unlisten();
       }
-    });
+    }
 
-    try {
-      await fileService.copyEntryAsync(taskId, sourcePath, destPath);
-      // Refresh the target directory after copy starts (will refresh again on complete)
-      get().refreshNode(targetDir);
-
-      // 如果是剪切操作，复制完成后删除源文件
-      if (isCut) {
-        // 等待复制完成后再删除
-        // 由于 copyEntryAsync 是异步的，我们需要在进度完成后再删除
-        // 这里使用一个简单的延迟，实际项目中应该基于进度事件
-        setTimeout(async () => {
+    // 如果是剪切操作，复制完成后删除源文件
+    if (isCut) {
+      setTimeout(async () => {
+        for (const sourcePath of sourcePaths) {
           try {
             await fileService.deleteEntry(sourcePath, true);
             // 刷新源目录
@@ -464,19 +611,13 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
             } else if (sourceParent) {
               get().refreshNode(sourceParent);
             }
-            // 清空剪贴板
-            set({ clipboardEntry: null });
           } catch (err) {
             console.error('Failed to delete source after cut:', err);
           }
-        }, 1000);
-      }
-    } catch (err) {
-      set({ error: getErrorMessage(err) });
-      throw err;
-    } finally {
-      // Unsubscribe from progress events
-      unlisten();
+        }
+        // 清空剪贴板
+        set({ clipboardEntries: [] });
+      }, 1000);
     }
   },
 

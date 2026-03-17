@@ -41,14 +41,19 @@ export function FileTree() {
     error,
     searchResults,
     isSearching,
-    clipboardEntry,
-    selectedNode,
+    clipboardEntries,
+    selectedNodes,
     setRootPath,
     loadRootEntries,
     refreshNode,
     clearError,
     search,
     pasteFromClipboard,
+    selectAll,
+    clearSelection,
+    copySelectedToClipboard,
+    cutSelectedToClipboard,
+    getSelectedEntries,
   } = useFileTreeStore();
 
   // 搜索状态
@@ -62,6 +67,50 @@ export function FileTree() {
   // 根目录右键菜单对话框状态
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [showNewFileDialog, setShowNewFileDialog] = useState(false);
+
+  // 键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + A: 全选
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        if (rootPath) {
+          selectAll(rootPath);
+        }
+      }
+
+      // Escape: 清除选择
+      if (e.key === 'Escape') {
+        clearSelection();
+      }
+
+      // Delete: 删除选中项
+      if (e.key === 'Delete' && selectedNodes.size > 0) {
+        // 这个需要在 TreeNode 中处理，因为有对话框
+      }
+
+      // Ctrl/Cmd + C: 复制选中项
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedNodes.size > 0) {
+        const entries = getSelectedEntries();
+        if (entries.length > 0) {
+          copySelectedToClipboard(entries);
+          toast.success(`已复制 ${entries.length} 个项目到剪贴板`);
+        }
+      }
+
+      // Ctrl/Cmd + X: 剪切选中项
+      if ((e.ctrlKey || e.metaKey) && e.key === 'x' && selectedNodes.size > 0) {
+        const entries = getSelectedEntries();
+        if (entries.length > 0) {
+          cutSelectedToClipboard(entries);
+          toast.success(`已剪切 ${entries.length} 个项目到剪贴板`);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [rootPath, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries]);
 
   useEffect(() => {
     if (rootPath) {
@@ -83,14 +132,15 @@ export function FileTree() {
 
   // 刷新当前选中目录，如果没有选中则刷新根目录
   const handleRefresh = useCallback(() => {
-    if (selectedNode && selectedNode !== rootPath) {
+    const firstSelected = selectedNodes.size > 0 ? Array.from(selectedNodes)[0] : null;
+    if (firstSelected && firstSelected !== rootPath) {
       // 刷新选中的节点
-      refreshNode(selectedNode);
+      refreshNode(firstSelected);
     } else {
       // 刷新根目录
       loadRootEntries();
     }
-  }, [selectedNode, rootPath, refreshNode, loadRootEntries]);
+  }, [selectedNodes, rootPath, refreshNode, loadRootEntries]);
 
   // 防抖搜索
   const handleSearchChange = useCallback((value: string) => {
@@ -297,7 +347,7 @@ export function FileTree() {
             <FilePlus className="w-4 h-4 mr-2" />
             新建文件
           </ContextMenuItem>
-          {clipboardEntry && (
+          {clipboardEntries.length > 0 && (
             <>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={async () => {
@@ -311,7 +361,7 @@ export function FileTree() {
                 }
               }}>
                 <ClipboardPaste className="w-4 h-4 mr-2" />
-                粘贴
+                粘贴 {clipboardEntries.length > 1 ? `${clipboardEntries.length} 个项目` : ''}
               </ContextMenuItem>
             </>
           )}
@@ -341,7 +391,15 @@ export function FileTree() {
 
       {/* Column Headers */}
       <div className="flex items-center gap-1 px-2 py-1 border-b bg-muted/30">
-        <span className="flex-1 text-xs text-muted-foreground font-medium">名称</span>
+        <span className="flex-1 text-xs text-muted-foreground font-medium">
+          {selectedNodes.size > 0 ? (
+            <span className="text-primary">
+              已选择 {selectedNodes.size} 个项目
+            </span>
+          ) : (
+            '名称'
+          )}
+        </span>
         {columns.filter(c => c.visible).map(renderColumnHeader)}
       </div>
 

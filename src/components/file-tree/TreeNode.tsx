@@ -41,12 +41,13 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodeProps) {
   const {
     expandedNodes,
-    selectedNode,
+    selectedNodes,
     nodeCache,
     rootPath,
-    clipboardEntry,
+    clipboardEntries,
     toggleNode,
-    selectNode,
+    toggleNodeSelection,
+    clearSelection,
     loadNodeChildren,
     refreshNode,
     loadRootEntries,
@@ -55,13 +56,17 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
     clearPreview,
     copyToClipboard,
     cutToClipboard,
+    copySelectedToClipboard,
+    cutSelectedToClipboard,
     pasteFromClipboard,
+    getSelectedEntries,
   } = useFileTreeStore();
 
   const { addBookmark } = useBookmarkStore();
 
   const isExpanded = expandedNodes.has(entry.path);
-  const isSelected = selectedNode === entry.path;
+  const isSelected = selectedNodes.has(entry.path);
+  const hasMultiSelection = selectedNodes.size > 1;
   const nodeState = nodeCache.get(entry.path);
   const children = nodeState?.children || [];
   const isLoading = nodeState?.isLoading;
@@ -93,16 +98,30 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    selectNode(entry.path);
 
-    if (entry.is_dir) {
-      toggleNode(entry.path);
-      // Sync browse path when clicking on a folder
-      setBrowsePath(entry.path);
-      // Clear preview when selecting a folder
-      clearPreview();
+    const isCtrlPressed = e.ctrlKey || e.metaKey;
+    const isShiftPressed = e.shiftKey;
+
+    if (isShiftPressed && selectedNodes.size > 0) {
+      // Shift+点击：范围选择
+      toggleNodeSelection(entry.path, 'shift');
+    } else if (isCtrlPressed) {
+      // Ctrl+点击：切换选择
+      toggleNodeSelection(entry.path, 'ctrl');
     } else {
-      // Load file preview when selecting a file
+      // 普通点击：单选
+      toggleNodeSelection(entry.path, 'none');
+    }
+
+    // 处理文件夹展开（仅在非修饰键情况下）
+    if (!isCtrlPressed && !isShiftPressed && entry.is_dir) {
+      toggleNode(entry.path);
+      setBrowsePath(entry.path);
+      clearPreview();
+    }
+
+    // 加载文件预览（仅单选时）
+    if (selectedNodes.size <= 1 && !entry.is_dir && !isCtrlPressed && !isShiftPressed) {
       loadFilePreview(entry);
     }
   };
@@ -137,23 +156,46 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
   };
 
   const handleCopy = () => {
-    copyToClipboard(entry);
-    toast.success('已复制到剪贴板');
+    if (hasMultiSelection && isSelected) {
+      // 多选复制
+      const selectedEntries = getSelectedEntries();
+      copySelectedToClipboard(selectedEntries);
+      toast.success(`已复制 ${selectedEntries.length} 个项目到剪贴板`);
+    } else {
+      // 单选复制
+      copyToClipboard(entry);
+      toast.success('已复制到剪贴板');
+    }
   };
 
   const handleCut = () => {
-    cutToClipboard(entry);
-    toast.success('已剪切到剪贴板');
+    if (hasMultiSelection && isSelected) {
+      // 多选剪切
+      const selectedEntries = getSelectedEntries();
+      cutSelectedToClipboard(selectedEntries);
+      toast.success(`已剪切 ${selectedEntries.length} 个项目到剪贴板`);
+    } else {
+      // 单选剪切
+      cutToClipboard(entry);
+      toast.success('已剪切到剪贴板');
+    }
   };
 
   const handlePaste = async () => {
-    if (!clipboardEntry) return;
+    if (clipboardEntries.length === 0) return;
 
-    // 检查目标路径是否已存在
-    const destPath = `${entry.path}/${clipboardEntry.sourceName}`.replace(/\\/g, '/');
-    const exists = await fileService.checkPathExists(destPath);
+    // 检查是否有目标路径已存在
+    let hasConflict = false;
+    for (const clipboardEntry of clipboardEntries) {
+      const destPath = `${entry.path}/${clipboardEntry.sourceName}`.replace(/\\/g, '/');
+      const exists = await fileService.checkPathExists(destPath);
+      if (exists) {
+        hasConflict = true;
+        break;
+      }
+    }
 
-    if (exists) {
+    if (hasConflict) {
       // 显示确认对话框
       setShowOverwriteDialog(true);
     } else {
@@ -190,11 +232,26 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
     e.stopPropagation();
     setIsDragging(true);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', entry.path);
+
+    // 获取要拖拽的条目
+    let entriesToDrag: FileEntry[];
+    if (isSelected && hasMultiSelection) {
+      // 如果当前节点在选中集合中，拖拽所有选中项
+      entriesToDrag = getSelectedEntries();
+    } else {
+      // 否则只拖拽当前节点
+      entriesToDrag = [entry];
+    }
+
+    // 设置拖拽数据
+    e.dataTransfer.setData('text/plain', entriesToDrag.map(e => e.path).join('\n'));
     e.dataTransfer.setData('application/json', JSON.stringify({
-      path: entry.path,
-      name: entry.name,
-      isDir: entry.is_dir
+      entries: entriesToDrag.map(e => ({
+        path: e.path,
+        name: e.name,
+        isDir: e.is_dir
+      })),
+      isMultiSelect: entriesToDrag.length > 1
     }));
   };
 
@@ -260,41 +317,67 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
       const jsonData = e.dataTransfer.getData('application/json');
       if (!jsonData) return;
 
-      const dragEntry = JSON.parse(jsonData);
-      const sourcePath = dragEntry.path;
+      const dragData = JSON.parse(jsonData);
+      const entries = dragData.entries || [dragData]; // 兼容旧格式
 
-      // 不能拖放到自身
-      if (sourcePath === entry.path) return;
+      // 过滤掉不能移动的条目（自身和子文件夹）
+      const validEntries = entries.filter((dragEntry: { path: string; name: string; isDir: boolean }) => {
+        // 不能拖放到自身
+        if (dragEntry.path === entry.path) return false;
+        // 检查是否拖放到子文件夹
+        if (dragEntry.isDir && entry.path.startsWith(dragEntry.path)) return false;
+        return true;
+      });
 
-      // 检查是否拖放到子文件夹
-      if (dragEntry.isDir && entry.path.startsWith(sourcePath)) {
-        toast.error('不能将文件夹移动到其子文件夹中');
+      if (validEntries.length === 0) {
+        toast.error('无法移动选中的项目');
         return;
       }
 
-      // 构建目标路径
-      const destPath = `${entry.path}/${dragEntry.name}`.replace(/\\/g, '/');
-
       // 检查目标是否已存在
-      const exists = await fileService.checkPathExists(destPath);
-      if (exists) {
+      let hasConflict = false;
+      for (const dragEntry of validEntries) {
+        const destPath = `${entry.path}/${dragEntry.name}`.replace(/\\/g, '/');
+        const exists = await fileService.checkPathExists(destPath);
+        if (exists) {
+          hasConflict = true;
+          break;
+        }
+      }
+
+      if (hasConflict) {
         toast.error('目标位置已存在同名文件或文件夹');
         return;
       }
 
-      // 执行移动
-      await fileService.moveEntry(sourcePath, destPath);
-      toast.success(`已移动 "${dragEntry.name}" 到当前文件夹`);
+      // 批量移动
+      let successCount = 0;
+      for (const dragEntry of validEntries) {
+        try {
+          const destPath = `${entry.path}/${dragEntry.name}`.replace(/\\/g, '/');
+          await fileService.moveEntry(dragEntry.path, destPath);
+          successCount++;
+        } catch (err) {
+          console.error('Failed to move:', dragEntry.path, err);
+        }
+      }
 
-      // 刷新
-      handleRefresh();
-      // 刷新源目录
-      const sourceParent = sourcePath.substring(0, sourcePath.lastIndexOf(/[\\/]/.test(sourcePath) ? (sourcePath.includes('\\') ? '\\' : '/') : '/'));
-      if (sourceParent && sourceParent !== entry.path) {
-        if (sourceParent === rootPath) {
-          loadRootEntries();
-        } else {
-          refreshNode(sourceParent);
+      if (successCount > 0) {
+        toast.success(`已移动 ${successCount} 个项目到当前文件夹`);
+        // 清除选择
+        clearSelection();
+        // 刷新
+        handleRefresh();
+        // 刷新源目录
+        for (const dragEntry of validEntries) {
+          const sourceParent = dragEntry.path.substring(0, dragEntry.path.lastIndexOf(/[\\/]/.test(dragEntry.path) ? (dragEntry.path.includes('\\') ? '\\' : '/') : '/'));
+          if (sourceParent && sourceParent !== entry.path) {
+            if (sourceParent === rootPath) {
+              loadRootEntries();
+            } else {
+              refreshNode(sourceParent);
+            }
+          }
         }
       }
     } catch (err) {
@@ -349,7 +432,8 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
       onDrop={entry.is_dir ? handleDrop : undefined}
       className={cn(
         'flex items-center gap-1 px-2 py-1 cursor-pointer rounded hover:bg-accent',
-        isSelected && 'bg-accent',
+        isSelected && 'bg-primary/20 ring-1 ring-primary/50',
+        isSelected && hasMultiSelection && 'bg-primary/30',
         isDragging && 'opacity-50',
         isDragOver && entry.is_dir && 'bg-primary/20 ring-1 ring-primary ring-inset',
       )}
@@ -379,6 +463,7 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
     <div className="select-none">
       <TreeNodeContextMenu
         entry={entry}
+        selectedCount={hasMultiSelection && isSelected ? selectedNodes.size : 1}
         onRefresh={handleRefresh}
         onRename={() => setShowRenameDialog(true)}
         onDelete={() => setShowDeleteDialog(true)}
@@ -388,7 +473,8 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
         onCopy={handleCopy}
         onCut={handleCut}
         onPaste={handlePaste}
-        hasClipboard={!!clipboardEntry}
+        onClearSelection={clearSelection}
+        hasClipboard={clipboardEntries.length > 0}
       >
         {nodeContent}
       </TreeNodeContextMenu>
@@ -431,15 +517,16 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
       <DeleteConfirmDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
-        entryPath={entry.path}
-        entryName={entry.name}
-        isDir={entry.is_dir}
-        onSuccess={handleRefreshAfterDelete}
+        entries={hasMultiSelection && isSelected ? getSelectedEntries() : [entry]}
+        onSuccess={() => {
+          handleRefreshAfterDelete();
+          clearSelection();
+        }}
       />
       <OverwriteConfirmDialog
         open={showOverwriteDialog}
         onOpenChange={setShowOverwriteDialog}
-        fileName={clipboardEntry?.sourceName || ''}
+        fileName={clipboardEntries.length > 1 ? `${clipboardEntries.length} 个项目` : (clipboardEntries[0]?.sourceName || '')}
         onReplace={handleReplace}
         onSkip={handleSkip}
       />
