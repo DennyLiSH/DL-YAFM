@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getErrorMessage } from '@/lib/error';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -43,7 +44,7 @@ export function PdfPreview({ filePath }: PdfPreviewProps) {
       prevUrlRef.current = url;
       setFileUrl(url);
     } catch (err) {
-      setError(`PDF 数据转换失败: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`PDF 数据转换失败: ${getErrorMessage(err)}`);
       setLoading(false);
     }
 

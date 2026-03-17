@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, X } from 'lucide-react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
+import { debounce } from '@/lib/utils';
 
 export function SearchBar() {
   const [query, setQuery] = useState('');
@@ -54,16 +55,4 @@ export function SearchBar() {
       )}
     </div>
   );
-}
-
-// Simple debounce utility
-function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<T>) => {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
 }

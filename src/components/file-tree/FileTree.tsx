@@ -192,7 +192,9 @@ export function FileTree() {
 
       if (draggedIndex !== -1 && targetIndex !== -1) {
         const [removed] = newColumns.splice(draggedIndex, 1);
-        newColumns.splice(targetIndex, 0, removed);
+        if (removed) {
+          newColumns.splice(targetIndex, 0, removed);
+        }
       }
 
       return newColumns;

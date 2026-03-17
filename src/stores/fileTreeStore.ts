@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { fileService, type FileChangeEvent } from '@/services/fileService';
 import { useCopyProgressStore } from '@/stores/copyProgressStore';
 import type { FileEntry, TreeNodeState, PreviewType } from '@/types/file';
+import { getErrorMessage } from '@/lib/error';
 
 // Clipboard entry type for copy/paste functionality
 export interface ClipboardEntry {
@@ -185,9 +186,9 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
         children: [],
         isLoaded: false,
         isLoading: false,
-        error: String(err),
+        error: getErrorMessage(err),
       });
-      set({ nodeCache: errorCache, error: String(err) });
+      set({ nodeCache: errorCache, error: getErrorMessage(err) });
     }
   },
 
@@ -203,7 +204,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       const entries = await fileService.getDirectoryEntries(rootPath);
       set({ rootEntries: entries });
     } catch (err) {
-      set({ error: String(err) });
+      set({ error: getErrorMessage(err) });
     } finally {
       set({ isLoading: false });
     }
@@ -223,7 +224,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       const results = await fileService.searchFiles(rootPath, query);
       set({ searchResults: results, isSearching: false });
     } catch (err) {
-      set({ searchResults: [], isSearching: false, error: String(err) });
+      set({ searchResults: [], isSearching: false, error: getErrorMessage(err) });
     }
   },
 
@@ -266,7 +267,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       const entries = await fileService.getDirectoryEntries(path);
       set({ browseEntries: entries, isLoadingBrowse: false });
     } catch (err) {
-      set({ browseEntries: [], isLoadingBrowse: false, error: String(err) });
+      set({ browseEntries: [], isLoadingBrowse: false, error: getErrorMessage(err) });
     }
   },
 
@@ -275,6 +276,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (browseHistory.length === 0) return;
 
     const previousPath = browseHistory[browseHistory.length - 1];
+    if (!previousPath) return; // undefined check for noUncheckedIndexedAccess
+
     const newHistory = browseHistory.slice(0, -1);
 
     set({
@@ -311,7 +314,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       const entries = await fileService.getDirectoryEntries(currentBrowsePath);
       set({ browseEntries: entries });
     } catch (err) {
-      set({ browseEntries: [], error: String(err) });
+      set({ browseEntries: [], error: getErrorMessage(err) });
     } finally {
       set({ isLoadingBrowse: false });
     }
@@ -373,7 +376,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
         previewContent: '',
         previewType: 'unsupported',
         isLoadingPreview: false,
-        previewError: String(err),
+        previewError: getErrorMessage(err),
       });
     }
   },
@@ -469,7 +472,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
         }, 1000);
       }
     } catch (err) {
-      set({ error: String(err) });
+      set({ error: getErrorMessage(err) });
       throw err;
     } finally {
       // Unsubscribe from progress events
@@ -489,7 +492,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       });
 
       // Store unlisten function globally for cleanup
-      (window as any).__fileChangeUnlisten = unlisten;
+      window.__fileChangeUnlisten = unlisten;
 
       set({ watchInitialized: true });
       console.log('[FileTreeStore] Watcher initialized');
@@ -500,10 +503,10 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
   cleanupWatcher: async () => {
     try {
-      const unlisten = (window as any).__fileChangeUnlisten;
+      const unlisten = window.__fileChangeUnlisten;
       if (unlisten) {
         unlisten();
-        (window as any).__fileChangeUnlisten = undefined;
+        window.__fileChangeUnlisten = undefined;
       }
       await fileService.stopAllWatch();
       set({ watchInitialized: false });
@@ -556,8 +559,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     console.log('[FileTreeStore] File change detected:', event.kind, 'in', event.directory);
 
     // Debounce refresh using a map
-    const debounceMap = (window as any).__refreshDebounceMap || new Map();
-    (window as any).__refreshDebounceMap = debounceMap;
+    const debounceMap = window.__refreshDebounceMap || new Map();
+    window.__refreshDebounceMap = debounceMap;
 
     const existing = debounceMap.get(event.directory);
     if (existing) {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { configService, ChatMessage } from '@/services/configService';
+import { configService, ChatMessage, ChatRole } from '@/services/configService';
 
 interface ChatState {
   messages: ChatMessage[];
@@ -8,7 +8,7 @@ interface ChatState {
   isInitialized: boolean;
 
   initialize: () => Promise<void>;
-  addMessage: (role: 'user' | 'assistant', content: string) => Promise<void>;
+  addMessage: (role: ChatRole, content: string) => Promise<void>;
   clearMessages: () => Promise<void>;
   setSending: (sending: boolean) => void;
 }
