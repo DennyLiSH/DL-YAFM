@@ -9,6 +9,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { formatFileSize, formatDate, getFileIcon } from '@/lib/format';
+import { getErrorMessage } from '@/lib/error';
 import {
   ChevronRight,
   ArrowUp,
@@ -18,6 +19,8 @@ import {
   ArrowDownWideNarrow,
 } from 'lucide-react';
 import type { FileEntry } from '@/types/file';
+import { fileService } from '@/services/fileService';
+import { toast } from 'sonner';
 
 type SortField = 'name' | 'size' | 'type' | 'modified';
 type SortDirection = 'asc' | 'desc';
@@ -85,15 +88,30 @@ export function FileBrowser() {
     }
   };
 
-  const handleDoubleClick = (entry: FileEntry) => {
+  const handleDoubleClick = async (entry: FileEntry) => {
     if (entry.is_dir) {
       setBrowsePath(entry.path);
+    } else {
+      // 文件：用系统默认程序打开
+      try {
+        await fileService.openWithSystemApp(entry.path);
+      } catch (err) {
+        toast.error(`打开失败: ${getErrorMessage(err)}`);
+      }
     }
   };
 
   const handleOpenFolder = (entry: FileEntry) => {
     if (entry.is_dir) {
       setBrowsePath(entry.path);
+    }
+  };
+
+  const handleOpenFile = async (entry: FileEntry) => {
+    try {
+      await fileService.openWithSystemApp(entry.path);
+    } catch (err) {
+      toast.error(`打开失败: ${getErrorMessage(err)}`);
     }
   };
 
@@ -268,6 +286,7 @@ export function FileBrowser() {
                   setShowNewFolderDialog(true);
                 }}
                 onOpenFolder={() => handleOpenFolder(entry)}
+                onOpenFile={() => handleOpenFile(entry)}
               >
                 <div
                   className="grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center"

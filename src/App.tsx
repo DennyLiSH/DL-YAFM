@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { FileTree } from '@/components/file-tree';
 import { FilePreview } from '@/components/file-preview';
 import { ChatHistory, ChatInput } from '@/components/chat';
@@ -15,12 +15,14 @@ import { Toaster } from '@/components/ui/sonner';
 import { Star, FolderTree, MessageSquare } from 'lucide-react';
 import { CopyProgressDialog } from '@/components/dialogs/CopyProgressDialog';
 
+// Module-level flag to prevent multiple initializations across React StrictMode remounts
+let isAppInitialized = false;
+
 function App() {
   const { setRootPath, loadRootEntries } = useFileTreeStore();
   const { theme, initialize: initSettings } = useSettingsStore();
   const { initialize: initBookmarks } = useBookmarkStore();
   const { initialize: initChat } = useChatStore();
-  const initRef = useRef(false);
 
   // Theme system implementation
   useEffect(() => {
@@ -47,9 +49,9 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    // Prevent double execution in React StrictMode
-    if (initRef.current) return;
-    initRef.current = true;
+    // Prevent double execution in React StrictMode (using module-level variable)
+    if (isAppInitialized) return;
+    isAppInitialized = true;
 
     const initializeApp = async () => {
       // 1. Check and migrate legacy data

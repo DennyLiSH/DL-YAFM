@@ -126,6 +126,19 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
     }
   };
 
+  const handleDoubleClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!entry.is_dir) {
+      // 文件：用系统默认程序打开
+      try {
+        await fileService.openWithSystemApp(entry.path);
+      } catch (err) {
+        toast.error(`打开失败: ${getErrorMessage(err)}`);
+      }
+    }
+    // 文件夹双击保持原有展开/收起行为（由 handleClick 处理）
+  };
+
   const handleRefresh = () => {
     if (entry.path === rootPath) {
       loadRootEntries();
@@ -153,6 +166,14 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
 
   const handleAddBookmark = () => {
     addBookmark(entry.name, entry.path);
+  };
+
+  const handleOpen = async () => {
+    try {
+      await fileService.openWithSystemApp(entry.path);
+    } catch (err) {
+      toast.error(`打开失败: ${getErrorMessage(err)}`);
+    }
   };
 
   const handleCopy = () => {
@@ -439,6 +460,7 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
       )}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
     >
       {/* Expand/Collapse Arrow */}
       {entry.is_dir && (
@@ -475,6 +497,7 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
         onPaste={handlePaste}
         onClearSelection={clearSelection}
         hasClipboard={clipboardEntries.length > 0}
+        onOpen={handleOpen}
       >
         {nodeContent}
       </TreeNodeContextMenu>

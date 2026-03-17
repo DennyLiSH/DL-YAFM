@@ -1,12 +1,14 @@
 use crate::error::{FileExplorerError, Result};
 use crate::models::FileEntry;
+use crate::RootPathState;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_fs::FsExt;
+use tauri_plugin_opener::OpenerExt;
 use base64::{engine::general_purpose::STANDARD, Engine};
 
 /// Copy progress information
@@ -50,6 +52,11 @@ pub fn grant_directory_access(app: AppHandle, path: String) -> Result<()> {
     scope.allow_directory(&path, true).map_err(|e| {
         FileExplorerError::InvalidPath(format!("Failed to grant access: {}", e))
     })?;
+
+    // Save the root path for security checks
+    let root_path_state = app.state::<RootPathState>();
+    let mut root_path = root_path_state.inner.lock();
+    *root_path = Some(dir_path.canonicalize().unwrap_or_else(|_| dir_path.to_path_buf()));
 
     Ok(())
 }
@@ -628,6 +635,48 @@ pub fn move_entry(source: String, dest: String) -> Result<()> {
     // Perform the move using fs::rename
     // This works for both files and directories on the same filesystem
     fs::rename(src_path, dest_path)?;
+
+    Ok(())
+}
+
+/// Open a file with system default application, with path security check
+/// Only allows opening files within the user-selected root directory
+#[tauri::command]
+pub fn open_file_safe(app: AppHandle, path: String) -> Result<()> {
+    let file_path = Path::new(&path);
+
+    if !file_path.exists() {
+        return Err(FileExplorerError::PathNotFound(path));
+    }
+
+    // Get the canonical path for comparison
+    let canonical_path = file_path.canonicalize()
+        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to resolve path: {}", e)))?;
+
+    // Check if the path is within the allowed root directory
+    let root_path_state = app.state::<RootPathState>();
+    let root_path = root_path_state.inner.lock();
+
+    match root_path.as_ref() {
+        Some(root) => {
+            // Check if the file is within the root directory
+            if !canonical_path.starts_with(root) {
+                return Err(FileExplorerError::InvalidPath(
+                    "Access denied: path is outside the allowed directory".to_string()
+                ));
+            }
+        }
+        None => {
+            return Err(FileExplorerError::InvalidPath(
+                "No root directory has been selected".to_string()
+            ));
+        }
+    }
+
+    // Open the file with system default application
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to open file: {}", e)))?;
 
     Ok(())
 }

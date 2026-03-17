@@ -16,6 +16,7 @@ import {
   Star,
   Scissors,
   X,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -34,6 +35,7 @@ interface TreeNodeContextMenuProps {
   onPaste?: () => void;
   onClearSelection?: () => void;
   hasClipboard?: boolean;
+  onOpen?: () => void;
 }
 
 export function TreeNodeContextMenu({
@@ -50,6 +52,7 @@ export function TreeNodeContextMenu({
   onPaste,
   onClearSelection,
   hasClipboard = false,
+  onOpen,
 }: TreeNodeContextMenuProps) {
   const isMultiSelect = selectedCount > 1;
 
@@ -103,6 +106,15 @@ export function TreeNodeContextMenu({
     <ContextMenu>
       <ContextMenuTrigger>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-48">
+        {onOpen && (
+          <>
+            <ContextMenuItem onClick={onOpen}>
+              <ExternalLink className="w-4 h-4 mr-2" />
+              打开
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
         {entry.is_dir && (
           <>
             <ContextMenuItem onClick={onNewFolder}>

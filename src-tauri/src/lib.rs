@@ -8,6 +8,12 @@ use commands::*;
 use config::ConfigManager;
 use parking_lot::Mutex;
 use tauri::Manager;
+use std::path::PathBuf;
+
+/// Global state for the root path selected by user
+pub struct RootPathState {
+    pub inner: Mutex<Option<PathBuf>>,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,6 +31,11 @@ pub fn run() {
             app.manage(AppConfigState {
                 inner: Mutex::new(config),
                 manager,
+            });
+
+            // Setup root path state
+            app.manage(RootPathState {
+                inner: Mutex::new(None),
             });
 
             Ok(())
@@ -46,6 +57,7 @@ pub fn run() {
             read_file_as_base64,
             create_file,
             check_path_exists,
+            open_file_safe,
             // Config commands
             get_settings,
             update_settings,

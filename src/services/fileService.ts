@@ -153,4 +153,9 @@ export const fileService = {
       callback(event.payload);
     });
   },
+
+  // Open file with system default application (with security check)
+  async openWithSystemApp(path: string): Promise<void> {
+    return invoke('open_file_safe', { path });
+  },
 };

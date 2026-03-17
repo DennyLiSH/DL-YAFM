@@ -12,6 +12,7 @@ import {
   Trash2,
   Copy,
   FolderOpen,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -23,6 +24,7 @@ interface FileBrowserContextMenuProps {
   onDelete: () => void;
   onNewFolder: () => void;
   onOpenFolder?: () => void;
+  onOpenFile?: () => void;
 }
 
 export function FileBrowserContextMenu({
@@ -32,6 +34,7 @@ export function FileBrowserContextMenu({
   onDelete,
   onNewFolder,
   onOpenFolder,
+  onOpenFile,
 }: FileBrowserContextMenuProps) {
   const handleCopyPath = async () => {
     try {
@@ -51,6 +54,15 @@ export function FileBrowserContextMenu({
             <ContextMenuItem onClick={onOpenFolder}>
               <FolderOpen className="w-4 h-4 mr-2" />
               打开文件夹
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+        {!entry.is_dir && onOpenFile && (
+          <>
+            <ContextMenuItem onClick={onOpenFile}>
+              <ExternalLink className="w-4 h-4 mr-2" />
+              打开
             </ContextMenuItem>
             <ContextMenuSeparator />
           </>
