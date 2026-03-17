@@ -1,0 +1,177 @@
+# ============== 通用规则 ==============
+
+# --- IDE 和编辑器 ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# --- 操作系统 ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- 敏感信息 ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+credentials.*
+secrets.*
+
+# --- 日志和临时文件 ---
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+
+# --- 压缩包 ---
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# ============== Rust (Tauri Backend) ==============
+
+# --- Compiled files ---
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+
+# --- Executables ---
+*.exe
+*.out
+*.app
+
+# --- Cargo build output ---
+target/
+
+# --- Backup files ---
+**/*.rs.bk
+**/*.rs.orig
+*.bk
+*.orig
+
+# --- Debug files ---
+*.pdb
+
+# --- Profiling data ---
+*.profraw
+*.profdata
+
+# --- Coverage output ---
+*.lcov
+coverage/
+cobertura.xml
+
+# --- Clippy output ---
+clippy.toml
+
+# ============== TypeScript (React Frontend) ==============
+
+# --- Dependencies ---
+node_modules/
+.pnp
+.pnp.js
+
+# --- Build output ---
+dist/
+dist-ssr/
+build/
+out/
+*.local
+
+# --- TypeScript cache ---
+*.tsbuildinfo
+.tscache/
+
+# --- Testing ---
+coverage/
+.nyc_output/
+
+# --- npm/yarn/pnpm ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+.stylelintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+
+# --- Vite ---
+*.local
+
+# --- esbuild ---
+.esbuild/
+
+# --- SWC ---
+.swc/
+
+# --- Generated files ---
+**/*.generated.ts
+**/*.generated.tsx
+_generated/
+generated/
+__generated__/
+
+# ============== Tauri 2.0 ==============
+
+# --- Tauri build output ---
+src-tauri/target/
+
+# --- Tauri generated icons (from source) ---
+# Keep: src-tauri/icons/
+
+# --- Wix (Windows installer) ---
+*.wixpdb
+*.wixobj
+src-tauri/target/wix/
+
+# --- AppImage (Linux) ---
+*.AppImage
+
+# --- DMG (macOS) ---
+*.dmg
+
+# --- MSIX (Windows Store) ---
+*.msix
+*.msixbundle
+
+# --- Deb package (Linux) ---
+*.deb
+
+# --- RPM package (Linux) ---
+*.rpm
+
+# --- NSIS (Windows installer) ---
+src-tauri/target/nsis/
+
+# --- Tauri capabilities (generated) ---
+# src-tauri/gen/
+
+# --- Tauri updater signatures (keep private) ---
+*.sig
+*.signature
+
+# ============== 项目特定 ==============
+
+# --- Add your custom rules below ---
+_*/
+.claude/
