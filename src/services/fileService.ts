@@ -18,6 +18,17 @@ export interface CopyProgress {
   error: string | null;
 }
 
+// File change event types
+export type FileChangeKind = 'created' | 'modified' | 'deleted' | 'renamed';
+
+// File change event payload from backend
+export interface FileChangeEvent {
+  directory: string;
+  kind: FileChangeKind;
+  paths: string[];
+  timestamp: number;
+}
+
 export const fileService = {
   async getDirectoryEntries(path: string): Promise<FileEntry[]> {
     return invoke('get_directory_entries', { path });
@@ -107,5 +118,39 @@ export const fileService = {
   // Move entry (file or directory) to a new location
   async moveEntry(source: string, dest: string): Promise<void> {
     return invoke('move_entry', { source, dest });
+  },
+
+  // === File Watch Commands ===
+
+  // Start watching a directory
+  async startWatch(path: string): Promise<void> {
+    return invoke('start_watch', { path });
+  },
+
+  // Stop watching a directory
+  async stopWatch(path: string): Promise<void> {
+    return invoke('stop_watch', { path });
+  },
+
+  // Update all watched paths at once
+  async updateWatchPaths(paths: string[]): Promise<void> {
+    return invoke('update_watch_paths', { paths });
+  },
+
+  // Stop all watching
+  async stopAllWatch(): Promise<void> {
+    return invoke('stop_all_watch');
+  },
+
+  // Get currently watched paths
+  async getWatchedPaths(): Promise<string[]> {
+    return invoke('get_watched_paths');
+  },
+
+  // Listen to file change events
+  onFileChange(callback: (event: FileChangeEvent) => void): Promise<UnlistenFn> {
+    return listen<FileChangeEvent>('fs-change', (event) => {
+      callback(event.payload);
+    });
   },
 };

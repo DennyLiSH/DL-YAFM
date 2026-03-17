@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod error;
 mod models;
+mod watcher;
 
 use commands::*;
 use config::ConfigManager;
@@ -54,6 +55,12 @@ pub fn run() {
             add_chat_message,
             clear_chat_messages,
             migrate_from_local_storage,
+            // Watch commands
+            start_watch,
+            stop_watch,
+            update_watch_paths,
+            stop_all_watch,
+            get_watched_paths,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

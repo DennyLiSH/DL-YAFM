@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { fileService } from '@/services/fileService';
+import { fileService, type FileChangeEvent } from '@/services/fileService';
 import { useCopyProgressStore } from '@/stores/copyProgressStore';
 import type { FileEntry, TreeNodeState, PreviewType } from '@/types/file';
 
@@ -40,6 +40,9 @@ interface FileTreeState {
   // Clipboard state
   clipboardEntry: ClipboardEntry | null;
 
+  // Watch state
+  watchInitialized: boolean;
+
   // Actions
   setRootPath: (path: string | null) => void;
   setExpanded: (path: string, expanded: boolean) => void;
@@ -67,6 +70,12 @@ interface FileTreeState {
   cutToClipboard: (entry: FileEntry) => void;
   clearClipboard: () => void;
   pasteFromClipboard: (targetDir: string) => Promise<void>;
+
+  // Watch actions
+  initializeWatcher: () => Promise<void>;
+  cleanupWatcher: () => Promise<void>;
+  syncWatchedPaths: () => Promise<void>;
+  handleFileChange: (event: FileChangeEvent) => void;
 }
 
 export const useFileTreeStore = create<FileTreeState>((set, get) => ({
@@ -98,8 +107,22 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   // Clipboard initial state
   clipboardEntry: null,
 
+  // Watch initial state
+  watchInitialized: false,
+
   // Actions
-  setRootPath: (path) => set({ rootPath: path }),
+  setRootPath: (path) => {
+    set({ rootPath: path });
+
+    // Initialize watcher if not done
+    if (path) {
+      get().initializeWatcher();
+      // Sync watched paths after setting root
+      setTimeout(() => get().syncWatchedPaths(), 100);
+    } else {
+      get().cleanupWatcher();
+    }
+  },
 
   setExpanded: (path, expanded) => {
     const { expandedNodes } = get();
@@ -110,6 +133,9 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       newExpanded.delete(path);
     }
     set({ expandedNodes: newExpanded });
+
+    // Sync watched paths after expansion change
+    get().syncWatchedPaths();
   },
 
   toggleNode: (path) => {
@@ -121,6 +147,9 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       newExpanded.add(path);
     }
     set({ expandedNodes: newExpanded });
+
+    // Sync watched paths after toggle
+    get().syncWatchedPaths();
   },
 
   selectNode: (path) => set({ selectedNode: path }),
@@ -446,5 +475,105 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       // Unsubscribe from progress events
       unlisten();
     }
+  },
+
+  // Watch actions
+  initializeWatcher: async () => {
+    const { watchInitialized } = get();
+    if (watchInitialized) return;
+
+    try {
+      // Subscribe to file change events
+      const unlisten = await fileService.onFileChange((event) => {
+        get().handleFileChange(event);
+      });
+
+      // Store unlisten function globally for cleanup
+      (window as any).__fileChangeUnlisten = unlisten;
+
+      set({ watchInitialized: true });
+      console.log('[FileTreeStore] Watcher initialized');
+    } catch (err) {
+      console.error('[FileTreeStore] Failed to initialize watcher:', err);
+    }
+  },
+
+  cleanupWatcher: async () => {
+    try {
+      const unlisten = (window as any).__fileChangeUnlisten;
+      if (unlisten) {
+        unlisten();
+        (window as any).__fileChangeUnlisten = undefined;
+      }
+      await fileService.stopAllWatch();
+      set({ watchInitialized: false });
+      console.log('[FileTreeStore] Watcher cleaned up');
+    } catch (err) {
+      console.error('[FileTreeStore] Failed to cleanup watcher:', err);
+    }
+  },
+
+  syncWatchedPaths: async () => {
+    const { expandedNodes, rootPath, watchInitialized } = get();
+
+    if (!watchInitialized) return;
+
+    // Collect all expanded directory paths + root path
+    const pathsToWatch: string[] = [];
+
+    // Add root path if it exists
+    if (rootPath) {
+      pathsToWatch.push(rootPath);
+    }
+
+    // Add all expanded directory paths
+    for (const path of expandedNodes) {
+      if (!pathsToWatch.includes(path)) {
+        pathsToWatch.push(path);
+      }
+    }
+
+    try {
+      await fileService.updateWatchPaths(pathsToWatch);
+      console.log('[FileTreeStore] Synced watched paths:', pathsToWatch.length);
+    } catch (err) {
+      console.error('[FileTreeStore] Failed to sync watched paths:', err);
+    }
+  },
+
+  handleFileChange: (event: FileChangeEvent) => {
+    const { expandedNodes, rootPath, currentBrowsePath } = get();
+
+    // Check if the changed directory is relevant (expanded or root)
+    const isExpanded = expandedNodes.has(event.directory);
+    const isRoot = event.directory === rootPath;
+    const isBrowsePath = event.directory === currentBrowsePath;
+
+    if (!isExpanded && !isRoot && !isBrowsePath) {
+      return;
+    }
+
+    console.log('[FileTreeStore] File change detected:', event.kind, 'in', event.directory);
+
+    // Debounce refresh using a map
+    const debounceMap = (window as any).__refreshDebounceMap || new Map();
+    (window as any).__refreshDebounceMap = debounceMap;
+
+    const existing = debounceMap.get(event.directory);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    debounceMap.set(event.directory, setTimeout(() => {
+      debounceMap.delete(event.directory);
+
+      // Refresh the affected directory in file tree
+      get().refreshNode(event.directory);
+
+      // Also refresh browse view if viewing the same directory
+      if (event.directory === currentBrowsePath) {
+        get().refreshBrowse();
+      }
+    }, 100)); // 100ms debounce
   },
 }));
