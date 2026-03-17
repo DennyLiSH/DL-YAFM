@@ -20,7 +20,8 @@
         "resizable": true,
         "center": true,
         "decorations": false,
-        "maximized": true
+        "maximized": true,
+        "contextMenu": false
       }
     ],
     "security": {
