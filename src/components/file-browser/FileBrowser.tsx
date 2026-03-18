@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { FileBrowserContextMenu } from './FileBrowserContextMenu';
 import {
@@ -7,6 +7,7 @@ import {
   DeleteConfirmDialog,
 } from '@/components/dialogs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -72,6 +73,19 @@ export function FileBrowser() {
   // 追踪最后选中的索引用于 Shift 范围选择
   const lastSelectedIndexRef = useRef<number | null>(null);
 
+  // 框选相关 refs
+  const containerRef = useRef<HTMLDivElement>(null);
+  const itemRefsRef = useRef<Map<string, HTMLElement | null>>(new Map());
+
+  // 注册文件项的 ref
+  const registerItemRef = useCallback((path: string, el: HTMLElement | null) => {
+    if (el) {
+      itemRefsRef.current.set(path, el);
+    } else {
+      itemRefsRef.current.delete(path);
+    }
+  }, []);
+
   // 是否有多个选中项
   const hasMultiSelection = selectedNodes.size > 1;
 
@@ -106,6 +120,34 @@ export function FileBrowser() {
     });
     return sorted;
   }, [browseEntries, sortField, sortDirection]);
+
+  // 处理框选变化
+  const handleMarqueeSelectionChange = useCallback((selectedPaths: string[], isAppend: boolean) => {
+    if (isAppend) {
+      // Ctrl 模式：追加选择
+      const newSelection = new Set(selectedNodes);
+      selectedPaths.forEach(path => {
+        if (newSelection.has(path)) {
+          newSelection.delete(path);
+        } else {
+          newSelection.add(path);
+        }
+      });
+      useFileTreeStore.setState({ selectedNodes: newSelection });
+    } else {
+      // 替换选择
+      useFileTreeStore.setState({ selectedNodes: new Set(selectedPaths) });
+    }
+  }, [selectedNodes]);
+
+  // 使用框选 Hook
+  const { isSelecting, marqueeRect, handleMouseDown } = useMarqueeSelection({
+    containerRef,
+    itemRefs: itemRefsRef.current,
+    items: sortedEntries,
+    getItemId: (entry) => entry.path,
+    onSelectionChange: handleMarqueeSelectionChange,
+  });
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -454,7 +496,12 @@ export function FileBrowser() {
       <ScrollArea className="flex-1">
         <ContextMenu>
           <ContextMenuTrigger className="block min-h-full">
-            {isLoadingBrowse && browseEntries.length === 0 ? (
+            <div
+              ref={containerRef}
+              className="relative min-h-full"
+              onMouseDown={handleMouseDown}
+            >
+              {isLoadingBrowse && browseEntries.length === 0 ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
                 加载中...
               </div>
@@ -501,6 +548,8 @@ export function FileBrowser() {
                       onPaste={() => handlePaste(entry)}
                     >
                       <div
+                        ref={(el) => registerItemRef(entry.path, el)}
+                        data-file-item
                         className={cn(
                           'flex flex-col items-center justify-center p-3 rounded-lg cursor-pointer transition-colors',
                           'hover:bg-accent',
@@ -553,6 +602,8 @@ export function FileBrowser() {
                       onPaste={() => handlePaste(entry)}
                     >
                       <div
+                        ref={(el) => registerItemRef(entry.path, el)}
+                        data-file-item
                         className={cn(
                           'grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center',
                           isSelected && 'bg-primary/20 ring-1 ring-primary/50',
@@ -584,6 +635,20 @@ export function FileBrowser() {
                 })}
               </div>
             )}
+
+              {/* 框选矩形 */}
+              {isSelecting && marqueeRect && (
+                <div
+                  className="absolute pointer-events-none border border-primary/50 bg-primary/10"
+                  style={{
+                    left: marqueeRect.left,
+                    top: marqueeRect.top,
+                    width: marqueeRect.width,
+                    height: marqueeRect.height,
+                  }}
+                />
+              )}
+            </div>
           </ContextMenuTrigger>
           <ContextMenuContent className="w-48">
             <ContextMenuItem onClick={handleNewFolderInCurrentPath}>
