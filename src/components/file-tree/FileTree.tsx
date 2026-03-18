@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { fileService } from '@/services/fileService';
 import { TreeNode } from './TreeNode';
+import type { FileEntry } from '@/types/file';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
@@ -189,6 +190,22 @@ export function FileTree() {
     }
     return rootEntries;
   }, [searchQuery, searchResults, isSearching, rootEntries]);
+
+  // 虚拟根节点：代表 rootPath 本身作为第一个可操作节点
+  const rootNode: FileEntry | null = useMemo(() => {
+    if (!rootPath) return null;
+    return {
+      path: rootPath,
+      name: rootPath.split(/[\\/]/).pop() || rootPath,
+      is_dir: true,
+      size: 0,
+      modified_at: null,
+      created_at: null,
+      is_readonly: false,
+      is_hidden: false,
+      extension: null,
+    };
+  }, [rootPath]);
 
   // 拖拽开始
   const handleDragStart = (e: React.DragEvent, columnId: string) => {
@@ -405,7 +422,7 @@ export function FileTree() {
 
       {/* Tree Content */}
       <ScrollArea className="flex-1">
-        {isLoading && displayEntries.length === 0 && !searchQuery ? (
+        {isLoading && !rootNode ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             加载中...
           </div>
@@ -414,12 +431,12 @@ export function FileTree() {
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             搜索中...
           </div>
-        ) : displayEntries.length === 0 ? (
+        ) : searchQuery && displayEntries.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
-            {searchQuery ? '未找到匹配的文件' : '空文件夹'}
+            未找到匹配的文件
           </div>
         ) : searchQuery ? (
-          // 搜索结果模式：显示为平铺列表
+          // 搜索结果模式：显示为平铺列表（包含文件和文件夹）
           <div className="py-1">
             <div className="px-2 py-1 text-xs text-muted-foreground border-b mb-1">
               搜索结果 ({displayEntries.length} 项)
@@ -428,14 +445,12 @@ export function FileTree() {
               <TreeNode key={entry.path} entry={entry} depth={0} columns={columns} />
             ))}
           </div>
-        ) : (
-          // 正常模式：显示文件树
+        ) : rootNode ? (
+          // 正常模式：显示虚拟根节点（只显示文件夹）
           <div className="py-1">
-            {displayEntries.map((entry) => (
-              <TreeNode key={entry.path} entry={entry} depth={0} columns={columns} />
-            ))}
+            <TreeNode key={rootNode.path} entry={rootNode} depth={0} columns={columns} isVirtualRoot />
           </div>
-        )}
+        ) : null}
       </ScrollArea>
     </div>
   );

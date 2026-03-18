@@ -28,6 +28,7 @@ interface TreeNodeProps {
   entry: FileEntry;
   depth: number;
   columns?: ColumnConfig[];
+  isVirtualRoot?: boolean; // 虚拟根节点标记
 }
 
 // 默认列配置
@@ -38,7 +39,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'created', label: '创建日期', width: 'w-28', visible: true },
 ];
 
-export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodeProps) {
+export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoot = false }: TreeNodeProps) {
   const {
     expandedNodes,
     selectedNodes,
@@ -85,6 +86,13 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
 
   // 使用 ref 追踪是否正在加载，避免 useEffect 无限循环
   const loadingRef = useRef(false);
+
+  // 虚拟根节点自动展开
+  useEffect(() => {
+    if (isVirtualRoot && entry.is_dir && !isExpanded) {
+      toggleNode(entry.path);
+    }
+  }, [isVirtualRoot, entry.is_dir, entry.path, isExpanded, toggleNode]);
 
   useEffect(() => {
     // Load children when node is expanded
@@ -502,7 +510,7 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
         {nodeContent}
       </TreeNodeContextMenu>
 
-      {/* Children */}
+      {/* Children - 只显示文件夹 */}
       {isExpanded && entry.is_dir && (
         <div>
           {isLoading ? (
@@ -510,7 +518,7 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS }: TreeNodePr
               加载中...
             </div>
           ) : (
-            children.map((child) => (
+            children.filter(child => child.is_dir).map((child) => (
               <TreeNode key={child.path} entry={child} depth={depth + 1} columns={columns} />
             ))
           )}
