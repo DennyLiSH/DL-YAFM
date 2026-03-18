@@ -13,11 +13,15 @@ import {
   Copy,
   FolderOpen,
   ExternalLink,
+  Scissors,
+  X,
+  ClipboardPaste,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface FileBrowserContextMenuProps {
   entry: FileEntry;
+  selectedCount?: number;
   children: React.ReactNode;
   onRefresh: () => void;
   onRename: () => void;
@@ -25,17 +29,30 @@ interface FileBrowserContextMenuProps {
   onNewFolder: () => void;
   onOpenFolder?: () => void;
   onOpenFile?: () => void;
+  onCopy?: () => void;
+  onCut?: () => void;
+  onClearSelection?: () => void;
+  hasClipboard?: boolean;
+  onPaste?: () => void;
 }
 
 export function FileBrowserContextMenu({
   entry,
+  selectedCount = 1,
   children,
   onRename,
   onDelete,
   onNewFolder,
   onOpenFolder,
   onOpenFile,
+  onCopy,
+  onCut,
+  onClearSelection,
+  hasClipboard = false,
+  onPaste,
 }: FileBrowserContextMenuProps) {
+  const isMultiSelect = selectedCount > 1;
+
   const handleCopyPath = async () => {
     try {
       await navigator.clipboard.writeText(entry.path);
@@ -45,6 +62,45 @@ export function FileBrowserContextMenu({
     }
   };
 
+  // 多选菜单
+  if (isMultiSelect) {
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger>{children}</ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
+          <div className="px-2 py-1.5 text-sm font-medium text-muted-foreground">
+            已选择 {selectedCount} 个项目
+          </div>
+          <ContextMenuSeparator />
+          {onCopy && (
+            <ContextMenuItem onClick={onCopy}>
+              <Copy className="w-4 h-4 mr-2" />
+              复制 {selectedCount} 个项目
+            </ContextMenuItem>
+          )}
+          {onCut && (
+            <ContextMenuItem onClick={onCut}>
+              <Scissors className="w-4 h-4 mr-2" />
+              剪切 {selectedCount} 个项目
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+            <Trash2 className="w-4 h-4 mr-2" />
+            删除 {selectedCount} 个项目
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          {onClearSelection && (
+            <ContextMenuItem onClick={onClearSelection}>
+              <X className="w-4 h-4 mr-2" />
+              取消选择
+            </ContextMenuItem>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+    );
+  }
+
+  // 单选菜单
   return (
     <ContextMenu>
       <ContextMenuTrigger>{children}</ContextMenuTrigger>
@@ -80,6 +136,24 @@ export function FileBrowserContextMenu({
           <Pencil className="w-4 h-4 mr-2" />
           重命名
         </ContextMenuItem>
+        {onCopy && (
+          <ContextMenuItem onClick={onCopy}>
+            <Copy className="w-4 h-4 mr-2" />
+            复制
+          </ContextMenuItem>
+        )}
+        {onCut && (
+          <ContextMenuItem onClick={onCut}>
+            <Scissors className="w-4 h-4 mr-2" />
+            剪切
+          </ContextMenuItem>
+        )}
+        {entry.is_dir && hasClipboard && onPaste && (
+          <ContextMenuItem onClick={onPaste}>
+            <ClipboardPaste className="w-4 h-4 mr-2" />
+            粘贴
+          </ContextMenuItem>
+        )}
         <ContextMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
           <Trash2 className="w-4 h-4 mr-2" />
           删除

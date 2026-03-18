@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { FileBrowserContextMenu } from './FileBrowserContextMenu';
 import {
@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { formatFileSize, formatDate, getFileIcon } from '@/lib/format';
 import { getErrorMessage } from '@/lib/error';
+import { cn } from '@/lib/utils';
 import {
   ChevronRight,
   ArrowUp,
@@ -32,11 +33,20 @@ export function FileBrowser() {
     browseHistory,
     isLoadingBrowse,
     rootPath,
+    selectedNodes,
+    clipboardEntries,
     setBrowsePath,
     goBack,
     goToParent,
     refreshBrowse,
     loadFilePreview,
+    toggleNodeSelection,
+    clearSelection,
+    selectAll,
+    getSelectedEntries,
+    copySelectedToClipboard,
+    cutSelectedToClipboard,
+    pasteFromClipboard,
   } = useFileTreeStore();
 
   const [sortField, setSortField] = useState<SortField>('name');
@@ -47,6 +57,12 @@ export function FileBrowser() {
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // 追踪最后选中的索引用于 Shift 范围选择
+  const lastSelectedIndexRef = useRef<number | null>(null);
+
+  // 是否有多个选中项
+  const hasMultiSelection = selectedNodes.size > 1;
 
   // Sort entries
   const sortedEntries = useMemo(() => {
@@ -89,9 +105,92 @@ export function FileBrowser() {
     }
   };
 
-  const handleClick = (entry: FileEntry) => {
-    if (!entry.is_dir) {
-      loadFilePreview(entry);
+  // 键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInBrowser = target.closest('[data-file-browser]');
+      if (!isInBrowser) return;
+
+      // Ctrl/Cmd + A: 全选当前目录
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        if (currentBrowsePath && sortedEntries.length > 0) {
+          selectAll(currentBrowsePath);
+          lastSelectedIndexRef.current = sortedEntries.length - 1;
+        }
+      }
+
+      // Escape: 清除选择
+      if (e.key === 'Escape') {
+        clearSelection();
+        lastSelectedIndexRef.current = null;
+      }
+
+      // Ctrl/Cmd + C: 复制选中项
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedNodes.size > 0) {
+        const entries = getSelectedEntries();
+        if (entries.length > 0) {
+          copySelectedToClipboard(entries);
+          toast.success(`已复制 ${entries.length} 个项目到剪贴板`);
+        }
+      }
+
+      // Ctrl/Cmd + X: 剪切选中项
+      if ((e.ctrlKey || e.metaKey) && e.key === 'x' && selectedNodes.size > 0) {
+        const entries = getSelectedEntries();
+        if (entries.length > 0) {
+          cutSelectedToClipboard(entries);
+          toast.success(`已剪切 ${entries.length} 个项目到剪贴板`);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries]);
+
+  // 切换目录时清除选择
+  useEffect(() => {
+    clearSelection();
+    lastSelectedIndexRef.current = null;
+  }, [currentBrowsePath]);
+
+  // 行点击处理
+  const handleRowClick = (e: React.MouseEvent, entry: FileEntry, index: number) => {
+    e.stopPropagation();
+
+    const isCtrlPressed = e.ctrlKey || e.metaKey;
+    const isShiftPressed = e.shiftKey;
+
+    if (isShiftPressed && lastSelectedIndexRef.current !== null) {
+      // Shift+点击：范围选择（同目录）
+      const [from, to] = lastSelectedIndexRef.current < index
+        ? [lastSelectedIndexRef.current, index]
+        : [index, lastSelectedIndexRef.current];
+
+      const newSelection = new Set<string>();
+      for (let i = from; i <= to; i++) {
+        const sibling = sortedEntries[i];
+        if (sibling) {
+          newSelection.add(sibling.path);
+        }
+      }
+      useFileTreeStore.setState({ selectedNodes: newSelection, lastSelectedNode: entry.path });
+      lastSelectedIndexRef.current = index;
+    } else if (isCtrlPressed) {
+      // Ctrl+点击：切换选择
+      toggleNodeSelection(entry.path, 'ctrl');
+      lastSelectedIndexRef.current = index;
+    } else {
+      // 普通点击：单选
+      toggleNodeSelection(entry.path, 'none');
+      lastSelectedIndexRef.current = index;
+
+      // 加载文件预览（仅单选时）
+      if (!entry.is_dir) {
+        loadFilePreview(entry);
+      }
     }
   };
 
@@ -129,6 +228,43 @@ export function FileBrowser() {
   const handleRefreshAfterAction = () => {
     refreshBrowse();
     setSelectedEntry(null);
+  };
+
+  // 复制处理
+  const handleCopy = (entry: FileEntry) => {
+    if (hasMultiSelection && selectedNodes.has(entry.path)) {
+      const entries = getSelectedEntries();
+      copySelectedToClipboard(entries);
+      toast.success(`已复制 ${entries.length} 个项目到剪贴板`);
+    } else {
+      copySelectedToClipboard([entry]);
+      toast.success('已复制到剪贴板');
+    }
+  };
+
+  // 剪切处理
+  const handleCut = (entry: FileEntry) => {
+    if (hasMultiSelection && selectedNodes.has(entry.path)) {
+      const entries = getSelectedEntries();
+      cutSelectedToClipboard(entries);
+      toast.success(`已剪切 ${entries.length} 个项目到剪贴板`);
+    } else {
+      cutSelectedToClipboard([entry]);
+      toast.success('已剪切到剪贴板');
+    }
+  };
+
+  // 粘贴处理
+  const handlePaste = async (entry: FileEntry) => {
+    if (entry.is_dir && clipboardEntries.length > 0) {
+      try {
+        await pasteFromClipboard(entry.path);
+        toast.success('粘贴完成');
+        refreshBrowse();
+      } catch (err) {
+        toast.error(`粘贴失败: ${getErrorMessage(err)}`);
+      }
+    }
   };
 
   // Breadcrumb segments
@@ -171,11 +307,16 @@ export function FileBrowser() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-file-browser>
       {/* Header */}
       <div className="px-4 py-2 border-b flex items-center justify-between">
         <h2 className="text-sm font-medium">文件浏览</h2>
-        <div className="flex gap-1">
+        <div className="flex gap-1 items-center">
+          {hasMultiSelection && (
+            <span className="text-xs text-muted-foreground mr-2">
+              已选择 {selectedNodes.size} 个项目
+            </span>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -275,51 +416,66 @@ export function FileBrowser() {
           </div>
         ) : (
           <div className="divide-y">
-            {sortedEntries.map((entry) => (
-              <FileBrowserContextMenu
-                key={entry.path}
-                entry={entry}
-                onRefresh={handleRefreshAfterAction}
-                onRename={() => {
-                  setSelectedEntry(entry);
-                  setShowRenameDialog(true);
-                }}
-                onDelete={() => {
-                  setSelectedEntry(entry);
-                  setShowDeleteDialog(true);
-                }}
-                onNewFolder={() => {
-                  setSelectedEntry(entry);
-                  setShowNewFolderDialog(true);
-                }}
-                onOpenFolder={() => handleOpenFolder(entry)}
-                onOpenFile={() => handleOpenFile(entry)}
-              >
-                <div
-                  className="grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center"
-                  onClick={() => handleClick(entry)}
-                  onDoubleClick={() => handleDoubleClick(entry)}
+            {sortedEntries.map((entry, index) => {
+              const isSelected = selectedNodes.has(entry.path);
+              const selectedCount = hasMultiSelection && isSelected ? selectedNodes.size : 1;
+
+              return (
+                <FileBrowserContextMenu
+                  key={entry.path}
+                  entry={entry}
+                  selectedCount={selectedCount}
+                  onRefresh={handleRefreshAfterAction}
+                  onRename={() => {
+                    setSelectedEntry(entry);
+                    setShowRenameDialog(true);
+                  }}
+                  onDelete={() => {
+                    setSelectedEntry(entry);
+                    setShowDeleteDialog(true);
+                  }}
+                  onNewFolder={() => {
+                    setSelectedEntry(entry);
+                    setShowNewFolderDialog(true);
+                  }}
+                  onOpenFolder={() => handleOpenFolder(entry)}
+                  onOpenFile={() => handleOpenFile(entry)}
+                  onCopy={() => handleCopy(entry)}
+                  onCut={() => handleCut(entry)}
+                  onClearSelection={clearSelection}
+                  hasClipboard={clipboardEntries.length > 0}
+                  onPaste={() => handlePaste(entry)}
                 >
-                  {/* Name */}
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-base flex-shrink-0">{getFileIcon(entry)}</span>
-                    <span className="truncate">{entry.name}</span>
+                  <div
+                    className={cn(
+                      'grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center',
+                      isSelected && 'bg-primary/20 ring-1 ring-primary/50',
+                      isSelected && hasMultiSelection && 'bg-primary/30'
+                    )}
+                    onClick={(e) => handleRowClick(e, entry, index)}
+                    onDoubleClick={() => handleDoubleClick(entry)}
+                  >
+                    {/* Name */}
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="text-base flex-shrink-0">{getFileIcon(entry)}</span>
+                      <span className="truncate">{entry.name}</span>
+                    </div>
+                    {/* Size */}
+                    <span className="text-xs text-muted-foreground text-right">
+                      {entry.is_dir ? '-' : formatFileSize(entry.size)}
+                    </span>
+                    {/* Type */}
+                    <span className="text-xs text-muted-foreground text-right truncate">
+                      {entry.is_dir ? '文件夹' : entry.name.split('.').pop() || '-'}
+                    </span>
+                    {/* Modified */}
+                    <span className="text-xs text-muted-foreground text-right">
+                      {formatDate(entry.modified_at)}
+                    </span>
                   </div>
-                  {/* Size */}
-                  <span className="text-xs text-muted-foreground text-right">
-                    {entry.is_dir ? '-' : formatFileSize(entry.size)}
-                  </span>
-                  {/* Type */}
-                  <span className="text-xs text-muted-foreground text-right truncate">
-                    {entry.is_dir ? '文件夹' : entry.name.split('.').pop() || '-'}
-                  </span>
-                  {/* Modified */}
-                  <span className="text-xs text-muted-foreground text-right">
-                    {formatDate(entry.modified_at)}
-                  </span>
-                </div>
-              </FileBrowserContextMenu>
-            ))}
+                </FileBrowserContextMenu>
+              );
+            })}
           </div>
         )}
       </ScrollArea>
@@ -343,10 +499,13 @@ export function FileBrowser() {
           <DeleteConfirmDialog
             open={showDeleteDialog}
             onOpenChange={setShowDeleteDialog}
-            entryPath={selectedEntry.path}
-            entryName={selectedEntry.name}
-            isDir={selectedEntry.is_dir}
-            onSuccess={handleRefreshAfterAction}
+            entries={hasMultiSelection && selectedNodes.has(selectedEntry.path)
+              ? getSelectedEntries()
+              : [selectedEntry]}
+            onSuccess={() => {
+              handleRefreshAfterAction();
+              clearSelection();
+            }}
           />
         </>
       )}
