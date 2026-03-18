@@ -7,6 +7,13 @@ import {
   DeleteConfirmDialog,
 } from '@/components/dialogs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { FolderPlus, ClipboardPaste } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatFileSize, formatDate, getFileIcon } from '@/lib/format';
 import { getErrorMessage } from '@/lib/error';
@@ -267,6 +274,25 @@ export function FileBrowser() {
     }
   };
 
+  // 粘贴到当前文件夹
+  const handlePasteToCurrentFolder = async () => {
+    if (currentBrowsePath && clipboardEntries.length > 0) {
+      try {
+        await pasteFromClipboard(currentBrowsePath);
+        toast.success('粘贴完成');
+        refreshBrowse();
+      } catch (err) {
+        toast.error(`粘贴失败: ${getErrorMessage(err)}`);
+      }
+    }
+  };
+
+  // 在空白处新建文件夹
+  const handleNewFolderInCurrentPath = () => {
+    setSelectedEntry(null);
+    setShowNewFolderDialog(true);
+  };
+
   // Breadcrumb segments
   const pathSegments = useMemo(() => {
     if (!currentBrowsePath) return [];
@@ -401,83 +427,99 @@ export function FileBrowser() {
 
       {/* File List */}
       <ScrollArea className="flex-1">
-        {isLoadingBrowse && browseEntries.length === 0 ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-            加载中...
-          </div>
-        ) : !currentBrowsePath ? (
-          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <FolderOpen className="w-10 h-10 mb-2 opacity-50" />
-            <p className="text-sm">点击文件树中的文件夹开始浏览</p>
-          </div>
-        ) : browseEntries.length === 0 ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-            空文件夹
-          </div>
-        ) : (
-          <div className="divide-y">
-            {sortedEntries.map((entry, index) => {
-              const isSelected = selectedNodes.has(entry.path);
-              const selectedCount = hasMultiSelection && isSelected ? selectedNodes.size : 1;
+        <ContextMenu>
+          <ContextMenuTrigger className="block min-h-full">
+            {isLoadingBrowse && browseEntries.length === 0 ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                加载中...
+              </div>
+            ) : !currentBrowsePath ? (
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <FolderOpen className="w-10 h-10 mb-2 opacity-50" />
+                <p className="text-sm">点击文件树中的文件夹开始浏览</p>
+              </div>
+            ) : browseEntries.length === 0 ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                空文件夹
+              </div>
+            ) : (
+              <div className="divide-y">
+                {sortedEntries.map((entry, index) => {
+                  const isSelected = selectedNodes.has(entry.path);
+                  const selectedCount = hasMultiSelection && isSelected ? selectedNodes.size : 1;
 
-              return (
-                <FileBrowserContextMenu
-                  key={entry.path}
-                  entry={entry}
-                  selectedCount={selectedCount}
-                  onRefresh={handleRefreshAfterAction}
-                  onRename={() => {
-                    setSelectedEntry(entry);
-                    setShowRenameDialog(true);
-                  }}
-                  onDelete={() => {
-                    setSelectedEntry(entry);
-                    setShowDeleteDialog(true);
-                  }}
-                  onNewFolder={() => {
-                    setSelectedEntry(entry);
-                    setShowNewFolderDialog(true);
-                  }}
-                  onOpenFolder={() => handleOpenFolder(entry)}
-                  onOpenFile={() => handleOpenFile(entry)}
-                  onCopy={() => handleCopy(entry)}
-                  onCut={() => handleCut(entry)}
-                  onClearSelection={clearSelection}
-                  hasClipboard={clipboardEntries.length > 0}
-                  onPaste={() => handlePaste(entry)}
-                >
-                  <div
-                    className={cn(
-                      'grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center',
-                      isSelected && 'bg-primary/20 ring-1 ring-primary/50',
-                      isSelected && hasMultiSelection && 'bg-primary/30'
-                    )}
-                    onClick={(e) => handleRowClick(e, entry, index)}
-                    onDoubleClick={() => handleDoubleClick(entry)}
-                  >
-                    {/* Name */}
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="text-base flex-shrink-0">{getFileIcon(entry)}</span>
-                      <span className="truncate">{entry.name}</span>
-                    </div>
-                    {/* Size */}
-                    <span className="text-xs text-muted-foreground text-right">
-                      {entry.is_dir ? '-' : formatFileSize(entry.size)}
-                    </span>
-                    {/* Type */}
-                    <span className="text-xs text-muted-foreground text-right truncate">
-                      {entry.is_dir ? '文件夹' : entry.name.split('.').pop() || '-'}
-                    </span>
-                    {/* Modified */}
-                    <span className="text-xs text-muted-foreground text-right">
-                      {formatDate(entry.modified_at)}
-                    </span>
-                  </div>
-                </FileBrowserContextMenu>
-              );
-            })}
-          </div>
-        )}
+                  return (
+                    <FileBrowserContextMenu
+                      key={entry.path}
+                      entry={entry}
+                      selectedCount={selectedCount}
+                      onRefresh={handleRefreshAfterAction}
+                      onRename={() => {
+                        setSelectedEntry(entry);
+                        setShowRenameDialog(true);
+                      }}
+                      onDelete={() => {
+                        setSelectedEntry(entry);
+                        setShowDeleteDialog(true);
+                      }}
+                      onNewFolder={() => {
+                        setSelectedEntry(entry);
+                        setShowNewFolderDialog(true);
+                      }}
+                      onOpenFolder={() => handleOpenFolder(entry)}
+                      onOpenFile={() => handleOpenFile(entry)}
+                      onCopy={() => handleCopy(entry)}
+                      onCut={() => handleCut(entry)}
+                      onClearSelection={clearSelection}
+                      hasClipboard={clipboardEntries.length > 0}
+                      onPaste={() => handlePaste(entry)}
+                    >
+                      <div
+                        className={cn(
+                          'grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center',
+                          isSelected && 'bg-primary/20 ring-1 ring-primary/50',
+                          isSelected && hasMultiSelection && 'bg-primary/30'
+                        )}
+                        onClick={(e) => handleRowClick(e, entry, index)}
+                        onDoubleClick={() => handleDoubleClick(entry)}
+                      >
+                        {/* Name */}
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="text-base flex-shrink-0">{getFileIcon(entry)}</span>
+                          <span className="truncate">{entry.name}</span>
+                        </div>
+                        {/* Size */}
+                        <span className="text-xs text-muted-foreground text-right">
+                          {entry.is_dir ? '-' : formatFileSize(entry.size)}
+                        </span>
+                        {/* Type */}
+                        <span className="text-xs text-muted-foreground text-right truncate">
+                          {entry.is_dir ? '文件夹' : entry.name.split('.').pop() || '-'}
+                        </span>
+                        {/* Modified */}
+                        <span className="text-xs text-muted-foreground text-right">
+                          {formatDate(entry.modified_at)}
+                        </span>
+                      </div>
+                    </FileBrowserContextMenu>
+                  );
+                })}
+              </div>
+            )}
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-48">
+            <ContextMenuItem onClick={handleNewFolderInCurrentPath}>
+              <FolderPlus className="w-4 h-4 mr-2" />
+              新建文件夹
+            </ContextMenuItem>
+            {clipboardEntries.length > 0 && (
+              <ContextMenuItem onClick={handlePasteToCurrentFolder}>
+                <ClipboardPaste className="w-4 h-4 mr-2" />
+                粘贴
+              </ContextMenuItem>
+            )}
+          </ContextMenuContent>
+        </ContextMenu>
       </ScrollArea>
 
       {/* Dialogs */}
