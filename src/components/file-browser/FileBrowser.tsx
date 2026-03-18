@@ -36,6 +36,7 @@ export function FileBrowser() {
     goBack,
     goToParent,
     refreshBrowse,
+    loadFilePreview,
   } = useFileTreeStore();
 
   const [sortField, setSortField] = useState<SortField>('name');
@@ -85,6 +86,12 @@ export function FileBrowser() {
     } else {
       setSortField(field);
       setSortDirection('asc');
+    }
+  };
+
+  const handleClick = (entry: FileEntry) => {
+    if (!entry.is_dir) {
+      loadFilePreview(entry);
     }
   };
 
@@ -290,6 +297,7 @@ export function FileBrowser() {
               >
                 <div
                   className="grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center"
+                  onClick={() => handleClick(entry)}
                   onDoubleClick={() => handleDoubleClick(entry)}
                 >
                   {/* Name */}

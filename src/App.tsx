@@ -1,18 +1,17 @@
 import { useEffect } from 'react';
 import { FileTree } from '@/components/file-tree';
 import { FilePreview } from '@/components/file-preview';
-import { ChatHistory, ChatInput } from '@/components/chat';
+import { FileBrowser } from '@/components/file-browser';
 import { TitleBar } from '@/components/TitleBar';
 import { BookmarkList } from '@/components/bookmarks';
 import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBookmarkStore } from '@/stores/bookmarkStore';
-import { useChatStore } from '@/stores/chatStore';
 import { fileService } from '@/services/fileService';
 import { detectLegacyData, executeMigration } from '@/utils/migration';
 import { Toaster } from '@/components/ui/sonner';
-import { Star, FolderTree, MessageSquare } from 'lucide-react';
+import { Star, FolderTree } from 'lucide-react';
 import { CopyProgressDialog } from '@/components/dialogs/CopyProgressDialog';
 
 // Module-level flag to prevent multiple initializations across React StrictMode remounts
@@ -22,7 +21,6 @@ function App() {
   const { setRootPath, loadRootEntries } = useFileTreeStore();
   const { theme, initialize: initSettings } = useSettingsStore();
   const { initialize: initBookmarks } = useBookmarkStore();
-  const { initialize: initChat } = useChatStore();
 
   // Theme system implementation
   useEffect(() => {
@@ -62,7 +60,7 @@ function App() {
       }
 
       // 2. Initialize all stores (load from backend)
-      await Promise.all([initSettings(), initBookmarks(), initChat()]);
+      await Promise.all([initSettings(), initBookmarks()]);
 
       // 3. Prompt user to select a folder
       const path = await fileService.selectAndGrantDirectory();
@@ -73,7 +71,7 @@ function App() {
     };
 
     initializeApp();
-  }, [setRootPath, loadRootEntries, initSettings, initBookmarks, initChat]);
+  }, [setRootPath, loadRootEntries, initSettings, initBookmarks]);
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -128,19 +126,9 @@ function App() {
             minSize={0.3}
             maxSize={0.8}
           >
-            {/* Center Panel - Chat Area */}
+            {/* Center Panel - File Browser */}
             <main className="h-full border-r flex flex-col">
-              <header className="flex items-center px-4 py-2 border-b">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4" />
-                  <h1 className="text-lg font-semibold">对话</h1>
-                </div>
-              </header>
-              {/* Chat: History + Input */}
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <ChatHistory />
-                <ChatInput />
-              </div>
+              <FileBrowser />
             </main>
 
             {/* Right Panel - File Preview */}
