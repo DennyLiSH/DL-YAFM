@@ -12,7 +12,7 @@ import { usePluginStore } from '@/stores/pluginStore';
 import { fileService } from '@/services/fileService';
 import { detectLegacyData, executeMigration } from '@/utils/migration';
 import { Toaster } from '@/components/ui/sonner';
-import { Star, FolderTree, PanelRightOpen } from 'lucide-react';
+import { Star, FolderTree, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { CopyProgressDialog } from '@/components/dialogs/CopyProgressDialog';
 
 // Module-level flag to prevent multiple initializations across React StrictMode remounts
@@ -138,22 +138,32 @@ function App() {
                 </button>
               </>
             ) : (
-              <ResizablePanel
-                direction="horizontal"
-                storageKey="file-explorer-center-right-ratio"
-                defaultRatio={0.6}
-                minSize={0.3}
-                maxSize={0.8}
-              >
-                {/* Center Panel - File Browser */}
-                <main className="h-full border-r flex flex-col">
-                  <FileBrowser />
-                </main>
-                {/* Right Panel - File Preview */}
-                <aside className="h-full flex flex-col min-w-[200px]">
-                  <FilePreview onCollapse={togglePreviewPanel} />
-                </aside>
-              </ResizablePanel>
+              <>
+                <ResizablePanel
+                  direction="horizontal"
+                  storageKey="file-explorer-center-right-ratio"
+                  defaultRatio={0.6}
+                  minSize={0.3}
+                  maxSize={0.8}
+                >
+                  {/* Center Panel - File Browser */}
+                  <main className="h-full border-r flex flex-col">
+                    <FileBrowser />
+                  </main>
+                  {/* Right Panel - File Preview */}
+                  <aside className="h-full flex flex-col min-w-[200px]">
+                    <FilePreview />
+                  </aside>
+                </ResizablePanel>
+                {/* Collapse Button */}
+                <button
+                  onClick={togglePreviewPanel}
+                  className="w-8 h-full flex items-center justify-center border-l border-border hover:bg-accent transition-colors flex-shrink-0"
+                  title="折叠预览面板"
+                >
+                  <PanelRightClose className="w-4 h-4" />
+                </button>
+              </>
             )}
           </div>
         </ResizablePanel>
