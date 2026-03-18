@@ -123,6 +123,25 @@ export function FileBrowser() {
     return sorted;
   }, [browseEntries, sortField, sortDirection]);
 
+  // 获取当前选中项的索引
+  const getCurrentSelectedIndex = useCallback((): number => {
+    if (selectedNodes.size === 0) return -1;
+    const firstSelected = Array.from(selectedNodes)[0];
+    return sortedEntries.findIndex(e => e.path === firstSelected);
+  }, [selectedNodes, sortedEntries]);
+
+  // 单选某个条目并滚动到可见区域
+  const selectSingleItem = useCallback((entry: FileEntry, index: number) => {
+    useFileTreeStore.setState({ selectedNodes: new Set([entry.path]) });
+    lastSelectedIndexRef.current = index;
+    if (!entry.is_dir) {
+      loadFilePreview(entry);
+    }
+    // 滚动到可见区域
+    const element = itemRefsRef.current.get(entry.path);
+    element?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [loadFilePreview]);
+
   // 处理框选变化
   const handleMarqueeSelectionChange = useCallback((selectedPaths: string[], isAppend: boolean) => {
     if (isAppend) {
@@ -167,6 +186,75 @@ export function FileBrowser() {
       const isInBrowser = target.closest('[data-file-browser]');
       if (!isInBrowser) return;
 
+      // 忽略输入框中的键盘事件
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+      // 方向键: 移动选择
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const currentIndex = getCurrentSelectedIndex();
+        const newIndex = e.key === 'ArrowDown'
+          ? Math.min(currentIndex + 1, sortedEntries.length - 1)
+          : Math.max(currentIndex - 1, 0);
+
+        if (sortedEntries.length > 0 && (currentIndex === -1 || newIndex !== currentIndex)) {
+          const entry = sortedEntries[newIndex];
+          if (entry) selectSingleItem(entry, newIndex);
+        }
+      }
+
+      // Grid 视图左右移动
+      if (browseViewMode === 'grid' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        const currentIndex = getCurrentSelectedIndex();
+
+        const newIndex = e.key === 'ArrowRight'
+          ? Math.min(currentIndex + 1, sortedEntries.length - 1)
+          : Math.max(currentIndex - 1, 0);
+
+        if (sortedEntries.length > 0 && (currentIndex === -1 || newIndex !== currentIndex)) {
+          const entry = sortedEntries[newIndex];
+          if (entry) selectSingleItem(entry, newIndex);
+        }
+      }
+
+      // HOME: 跳转到第一个
+      if (e.key === 'Home') {
+        e.preventDefault();
+        const entry = sortedEntries[0];
+        if (entry) selectSingleItem(entry, 0);
+      }
+
+      // END: 跳转到最后一个
+      if (e.key === 'End') {
+        e.preventDefault();
+        const lastIndex = sortedEntries.length - 1;
+        const entry = sortedEntries[lastIndex];
+        if (entry) selectSingleItem(entry, lastIndex);
+      }
+
+      // DELETE: 删除选中项
+      if (e.key === 'Delete' && selectedNodes.size > 0) {
+        e.preventDefault();
+        const entries = getSelectedEntries();
+        const firstEntry = entries[0];
+        if (firstEntry) {
+          setSelectedEntry(firstEntry);
+          setShowDeleteDialog(true);
+        }
+      }
+
+      // F2: 重命名
+      if (e.key === 'F2' && selectedNodes.size === 1) {
+        e.preventDefault();
+        const entries = getSelectedEntries();
+        const firstEntry = entries[0];
+        if (firstEntry) {
+          setSelectedEntry(firstEntry);
+          setShowRenameDialog(true);
+        }
+      }
+
       // Ctrl/Cmd + A: 全选当前目录
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault();
@@ -203,7 +291,7 @@ export function FileBrowser() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries]);
+  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries, getCurrentSelectedIndex, selectSingleItem, browseViewMode]);
 
   // 切换目录时清除选择
   useEffect(() => {
