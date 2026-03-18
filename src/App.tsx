@@ -8,19 +8,21 @@ import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBookmarkStore } from '@/stores/bookmarkStore';
+import { usePluginStore } from '@/stores/pluginStore';
 import { fileService } from '@/services/fileService';
 import { detectLegacyData, executeMigration } from '@/utils/migration';
 import { Toaster } from '@/components/ui/sonner';
-import { Star, FolderTree } from 'lucide-react';
+import { Star, FolderTree, PanelRightOpen } from 'lucide-react';
 import { CopyProgressDialog } from '@/components/dialogs/CopyProgressDialog';
 
 // Module-level flag to prevent multiple initializations across React StrictMode remounts
 let isAppInitialized = false;
 
 function App() {
-  const { setRootPath, loadRootEntries } = useFileTreeStore();
+  const { setRootPath, loadRootEntries, previewPanelCollapsed, togglePreviewPanel } = useFileTreeStore();
   const { theme, initialize: initSettings } = useSettingsStore();
   const { initialize: initBookmarks } = useBookmarkStore();
+  const { initialize: initPlugins } = usePluginStore();
 
   // Theme system implementation
   useEffect(() => {
@@ -60,7 +62,7 @@ function App() {
       }
 
       // 2. Initialize all stores (load from backend)
-      await Promise.all([initSettings(), initBookmarks()]);
+      await Promise.all([initSettings(), initBookmarks(), initPlugins()]);
 
       // 3. Prompt user to select a folder
       const path = await fileService.selectAndGrantDirectory();
@@ -71,7 +73,7 @@ function App() {
     };
 
     initializeApp();
-  }, [setRootPath, loadRootEntries, initSettings, initBookmarks]);
+  }, [setRootPath, loadRootEntries, initSettings, initBookmarks, initPlugins]);
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -119,23 +121,41 @@ function App() {
           </aside>
 
           {/* Center + Right Panels */}
-          <ResizablePanel
-            direction="horizontal"
-            storageKey="file-explorer-center-right-ratio"
-            defaultRatio={0.6}
-            minSize={0.3}
-            maxSize={0.8}
-          >
-            {/* Center Panel - File Browser */}
-            <main className="h-full border-r flex flex-col">
-              <FileBrowser />
-            </main>
-
-            {/* Right Panel - File Preview */}
-            <aside className="h-full flex flex-col min-w-[200px]">
-              <FilePreview />
-            </aside>
-          </ResizablePanel>
+          <div className="flex flex-1 h-full overflow-hidden">
+            {previewPanelCollapsed ? (
+              <>
+                {/* Center Panel - File Browser */}
+                <main className="h-full border-r flex flex-col flex-1">
+                  <FileBrowser />
+                </main>
+                {/* Expand Button */}
+                <button
+                  onClick={togglePreviewPanel}
+                  className="w-8 h-full flex items-center justify-center border-l border-border hover:bg-accent transition-colors flex-shrink-0"
+                  title="展开预览面板"
+                >
+                  <PanelRightOpen className="w-4 h-4" />
+                </button>
+              </>
+            ) : (
+              <ResizablePanel
+                direction="horizontal"
+                storageKey="file-explorer-center-right-ratio"
+                defaultRatio={0.6}
+                minSize={0.3}
+                maxSize={0.8}
+              >
+                {/* Center Panel - File Browser */}
+                <main className="h-full border-r flex flex-col">
+                  <FileBrowser />
+                </main>
+                {/* Right Panel - File Preview */}
+                <aside className="h-full flex flex-col min-w-[200px]">
+                  <FilePreview onCollapse={togglePreviewPanel} />
+                </aside>
+              </ResizablePanel>
+            )}
+          </div>
         </ResizablePanel>
       </div>
 

@@ -1,18 +1,31 @@
-import { FileText, FileWarning } from 'lucide-react';
+import { FileText, FileWarning, PanelRightClose } from 'lucide-react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { TxtPreview } from './TxtPreview';
 import { MarkdownPreview } from './MarkdownPreview';
 import { ImagePreview } from './ImagePreview';
 import { PdfPreview } from './PdfPreview';
 
-export function FilePreview() {
+interface FilePreviewProps {
+  onCollapse?: () => void;
+}
+
+export function FilePreview({ onCollapse }: FilePreviewProps) {
   const { previewFile, previewContent, previewType, isLoadingPreview, previewError } = useFileTreeStore();
 
   if (!previewFile) {
     return (
       <div className="flex flex-col h-full">
-        <div className="px-4 py-2 border-b">
+        <div className="px-4 py-2 border-b flex items-center justify-between">
           <h2 className="text-sm font-medium">文件预览</h2>
+          {onCollapse && (
+            <button
+              onClick={onCollapse}
+              className="hover:bg-accent p-1 rounded transition-colors"
+              title="折叠预览面板"
+            >
+              <PanelRightClose className="w-4 h-4" />
+            </button>
+          )}
         </div>
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           选择文件以预览内容
@@ -60,9 +73,20 @@ export function FilePreview() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-2 border-b flex items-center gap-2">
-        <FileText className="w-4 h-4 shrink-0" />
-        <span className="text-sm font-medium truncate">{previewFile.name}</span>
+      <div className="px-4 py-2 border-b flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileText className="w-4 h-4 shrink-0" />
+          <span className="text-sm font-medium truncate">{previewFile.name}</span>
+        </div>
+        {onCollapse && (
+          <button
+            onClick={onCollapse}
+            className="hover:bg-accent p-1 rounded transition-colors flex-shrink-0"
+            title="折叠预览面板"
+          >
+            <PanelRightClose className="w-4 h-4" />
+          </button>
+        )}
       </div>
       <div className="flex-1 overflow-hidden">
         {renderPreviewContent()}

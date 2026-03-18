@@ -16,8 +16,24 @@ import {
   Scissors,
   X,
   ClipboardPaste,
+  Puzzle,
+  MessageCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePluginStore } from '@/stores/pluginStore';
+import { useFileTreeStore } from '@/stores/fileTreeStore';
+
+// 图标映射
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  'message-circle': MessageCircle,
+  hash: Puzzle,
+  default: Puzzle,
+};
+
+function getPluginIcon(iconName?: string) {
+  const IconComponent = iconMap[iconName || 'default'] || Puzzle;
+  return <IconComponent className="w-4 h-4 mr-2" />;
+}
 
 interface FileBrowserContextMenuProps {
   entry: FileEntry;
@@ -40,6 +56,7 @@ export function FileBrowserContextMenu({
   entry,
   selectedCount = 1,
   children,
+  onRefresh,
   onRename,
   onDelete,
   onNewFolder,
@@ -53,6 +70,26 @@ export function FileBrowserContextMenu({
 }: FileBrowserContextMenuProps) {
   const isMultiSelect = selectedCount > 1;
 
+  // 插件系统
+  const { getMenuItemsForContext, executeAction } = usePluginStore();
+  const getSelectedEntriesFromStore = useFileTreeStore((state) => state.getSelectedEntries);
+  const selectedNodes = useFileTreeStore((state) => state.selectedNodes);
+
+  // 获取当前选中的条目
+  const getSelectedEntries = (): FileEntry[] => {
+    if (selectedNodes.size > 1) {
+      return getSelectedEntriesFromStore();
+    }
+    return [entry];
+  };
+
+  const selectedEntries = getSelectedEntries();
+  const pluginMenuItems = getMenuItemsForContext(selectedEntries, 'FileBrowser');
+
+  const handlePluginAction = (pluginId: string, actionId: string) => {
+    executeAction(pluginId, actionId, selectedEntries, entry.path, onRefresh);
+  };
+
   const handleCopyPath = async () => {
     try {
       await navigator.clipboard.writeText(entry.path);
@@ -60,6 +97,30 @@ export function FileBrowserContextMenu({
     } catch {
       toast.error('复制失败');
     }
+  };
+
+  // 渲染插件菜单项
+  const renderPluginMenuItems = () => {
+    if (pluginMenuItems.length === 0) return null;
+
+    return (
+      <>
+        <ContextMenuSeparator />
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+          插件
+        </div>
+        {pluginMenuItems.map((item) => (
+          <ContextMenuItem
+            key={`${item.pluginId}-${item.id}`}
+            onClick={() => handlePluginAction(item.pluginId, item.id)}
+            disabled={item.disabled}
+          >
+            {getPluginIcon(item.icon)}
+            {item.label}
+          </ContextMenuItem>
+        ))}
+      </>
+    );
   };
 
   // 多选菜单
@@ -163,6 +224,7 @@ export function FileBrowserContextMenu({
           <Copy className="w-4 h-4 mr-2" />
           复制路径
         </ContextMenuItem>
+        {renderPluginMenuItems()}
       </ContextMenuContent>
     </ContextMenu>
   );

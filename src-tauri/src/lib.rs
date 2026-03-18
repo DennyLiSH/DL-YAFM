@@ -2,11 +2,14 @@ mod commands;
 mod config;
 mod error;
 mod models;
+mod plugin;
 mod watcher;
 
 use commands::*;
 use config::ConfigManager;
 use parking_lot::Mutex;
+use plugin::{PluginManager, PluginManagerState};
+use std::sync::Arc;
 use tauri::Manager;
 use std::path::PathBuf;
 
@@ -37,6 +40,21 @@ pub fn run() {
             app.manage(RootPathState {
                 inner: Mutex::new(None),
             });
+
+            // Initialize plugin manager
+            let plugin_dir = app.path().app_data_dir()
+                .expect("Failed to get app data dir")
+                .join("plugins");
+
+            let plugin_manager = PluginManager::new(plugin_dir)
+                .expect("Failed to initialize plugin manager");
+
+            // Load plugins synchronously (in production, consider async)
+            tauri::async_runtime::block_on(async {
+                let _ = plugin_manager.load_all_plugins().await;
+            });
+
+            app.manage(PluginManagerState::new(plugin_manager));
 
             Ok(())
         })
@@ -74,6 +92,12 @@ pub fn run() {
             update_watch_paths,
             stop_all_watch,
             get_watched_paths,
+            // Plugin commands
+            get_plugins,
+            get_plugin_menu_items,
+            execute_plugin_action,
+            reload_plugins,
+            get_plugin_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

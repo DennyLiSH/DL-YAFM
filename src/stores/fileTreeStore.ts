@@ -39,6 +39,7 @@ interface FileTreeState {
   previewType: PreviewType;
   isLoadingPreview: boolean;
   previewError: string | null;
+  previewPanelCollapsed: boolean;
 
   // Clipboard state (支持多选)
   clipboardEntries: ClipboardEntry[];
@@ -68,6 +69,7 @@ interface FileTreeState {
   // Preview actions
   loadFilePreview: (entry: FileEntry) => Promise<void>;
   clearPreview: () => void;
+  togglePreviewPanel: () => void;
 
   // Multi-select actions
   toggleNodeSelection: (path: string, modifier: 'none' | 'ctrl' | 'shift') => void;
@@ -117,6 +119,11 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   previewType: 'unsupported',
   isLoadingPreview: false,
   previewError: null,
+  previewPanelCollapsed: (() => {
+    if (typeof window === 'undefined') return false;
+    const saved = localStorage.getItem('preview-panel-collapsed');
+    return saved === 'true';
+  })(),
 
   // Clipboard initial state (支持多选)
   clipboardEntries: [],
@@ -511,6 +518,12 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     previewType: 'unsupported',
     previewError: null,
   }),
+
+  togglePreviewPanel: () => {
+    const newState = !get().previewPanelCollapsed;
+    localStorage.setItem('preview-panel-collapsed', String(newState));
+    set({ previewPanelCollapsed: newState });
+  },
 
   // Clipboard actions
   copyToClipboard: (entry) => set({

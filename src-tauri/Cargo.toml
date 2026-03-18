@@ -26,10 +26,14 @@ tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
-tokio = { version = "1", features = ["fs", "sync", "time", "rt"] }
+tokio = { version = "1", features = ["fs", "sync", "time", "rt", "macros"] }
 tokio-util = "0.7"
 parking_lot = "0.12"
 once_cell = "1.18"
 trash = "5"
 notify = { version = "6", features = ["serde"] }
+
+# WASM 插件系统
+wasmtime = "25"
+wasmtime-wasi = "25"
 
