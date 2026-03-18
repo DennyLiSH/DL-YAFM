@@ -18,10 +18,13 @@ import {
   ClipboardPaste,
   Puzzle,
   MessageCircle,
+  FilePlus,
+  Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePluginStore } from '@/stores/pluginStore';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
+import { useBookmarkStore } from '@/stores/bookmarkStore';
 
 // 图标映射
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -43,6 +46,7 @@ interface FileBrowserContextMenuProps {
   onRename: () => void;
   onDelete: () => void;
   onNewFolder: () => void;
+  onNewFile?: () => void;
   onOpenFolder?: () => void;
   onOpenFile?: () => void;
   onCopy?: () => void;
@@ -60,6 +64,7 @@ export function FileBrowserContextMenu({
   onRename,
   onDelete,
   onNewFolder,
+  onNewFile,
   onOpenFolder,
   onOpenFile,
   onCopy,
@@ -74,6 +79,23 @@ export function FileBrowserContextMenu({
   const { getMenuItemsForContext, executeAction } = usePluginStore();
   const getSelectedEntriesFromStore = useFileTreeStore((state) => state.getSelectedEntries);
   const selectedNodes = useFileTreeStore((state) => state.selectedNodes);
+
+  // 收藏夹
+  const { addBookmark, removeBookmark, isBookmarked, bookmarks } = useBookmarkStore();
+  const entryIsBookmarked = isBookmarked(entry.path);
+
+  const handleToggleBookmark = async () => {
+    if (entryIsBookmarked) {
+      const bookmark = bookmarks.find((b) => b.path === entry.path);
+      if (bookmark) {
+        await removeBookmark(bookmark.id);
+        toast.success('已取消收藏');
+      }
+    } else {
+      await addBookmark(entry.name, entry.path);
+      toast.success('已添加到收藏夹');
+    }
+  };
 
   // 获取当前选中的条目
   const getSelectedEntries = (): FileEntry[] => {
@@ -190,6 +212,12 @@ export function FileBrowserContextMenu({
               <FolderPlus className="w-4 h-4 mr-2" />
               新建文件夹
             </ContextMenuItem>
+            {onNewFile && (
+              <ContextMenuItem onClick={onNewFile}>
+                <FilePlus className="w-4 h-4 mr-2" />
+                新建文件
+              </ContextMenuItem>
+            )}
             <ContextMenuSeparator />
           </>
         )}
@@ -223,6 +251,10 @@ export function FileBrowserContextMenu({
         <ContextMenuItem onClick={handleCopyPath}>
           <Copy className="w-4 h-4 mr-2" />
           复制路径
+        </ContextMenuItem>
+        <ContextMenuItem onClick={handleToggleBookmark}>
+          <Star className={`w-4 h-4 mr-2 ${entryIsBookmarked ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+          {entryIsBookmarked ? '取消收藏' : '添加到收藏夹'}
         </ContextMenuItem>
         {renderPluginMenuItems()}
       </ContextMenuContent>

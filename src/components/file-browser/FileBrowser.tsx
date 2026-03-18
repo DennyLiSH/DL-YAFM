@@ -3,6 +3,7 @@ import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { FileBrowserContextMenu } from './FileBrowserContextMenu';
 import {
   NewFolderDialog,
+  NewFileDialog,
   RenameDialog,
   DeleteConfirmDialog,
 } from '@/components/dialogs';
@@ -14,7 +15,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { FolderPlus, ClipboardPaste } from 'lucide-react';
+import { FolderPlus, ClipboardPaste, FilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatFileSize, formatDate, getFileIcon } from '@/lib/format';
 import { getErrorMessage } from '@/lib/error';
@@ -67,6 +68,7 @@ export function FileBrowser() {
   // Dialog states
   const [selectedEntry, setSelectedEntry] = useState<FileEntry | null>(null);
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
+  const [showNewFileDialog, setShowNewFileDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -339,6 +341,12 @@ export function FileBrowser() {
     setShowNewFolderDialog(true);
   };
 
+  // 在空白处新建文件
+  const handleNewFileInCurrentPath = () => {
+    setSelectedEntry(null);
+    setShowNewFileDialog(true);
+  };
+
   // Breadcrumb segments
   const pathSegments = useMemo(() => {
     if (!currentBrowsePath) return [];
@@ -495,11 +503,10 @@ export function FileBrowser() {
       {/* File List */}
       <ScrollArea className="flex-1">
         <ContextMenu>
-          <ContextMenuTrigger className="block min-h-full">
+          <ContextMenuTrigger className="block min-h-full" onMouseDown={handleMouseDown}>
             <div
               ref={containerRef}
-              className="relative min-h-full"
-              onMouseDown={handleMouseDown}
+              className="relative h-full min-h-full"
             >
               {isLoadingBrowse && browseEntries.length === 0 ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
@@ -538,6 +545,10 @@ export function FileBrowser() {
                       onNewFolder={() => {
                         setSelectedEntry(entry);
                         setShowNewFolderDialog(true);
+                      }}
+                      onNewFile={() => {
+                        setSelectedEntry(entry);
+                        setShowNewFileDialog(true);
                       }}
                       onOpenFolder={() => handleOpenFolder(entry)}
                       onOpenFile={() => handleOpenFile(entry)}
@@ -592,6 +603,10 @@ export function FileBrowser() {
                       onNewFolder={() => {
                         setSelectedEntry(entry);
                         setShowNewFolderDialog(true);
+                      }}
+                      onNewFile={() => {
+                        setSelectedEntry(entry);
+                        setShowNewFileDialog(true);
                       }}
                       onOpenFolder={() => handleOpenFolder(entry)}
                       onOpenFile={() => handleOpenFile(entry)}
@@ -655,6 +670,10 @@ export function FileBrowser() {
               <FolderPlus className="w-4 h-4 mr-2" />
               新建文件夹
             </ContextMenuItem>
+            <ContextMenuItem onClick={handleNewFileInCurrentPath}>
+              <FilePlus className="w-4 h-4 mr-2" />
+              新建文件
+            </ContextMenuItem>
             {clipboardEntries.length > 0 && (
               <ContextMenuItem onClick={handlePasteToCurrentFolder}>
                 <ClipboardPaste className="w-4 h-4 mr-2" />
@@ -671,6 +690,12 @@ export function FileBrowser() {
           <NewFolderDialog
             open={showNewFolderDialog}
             onOpenChange={setShowNewFolderDialog}
+            parentPath={selectedEntry.is_dir ? selectedEntry.path : currentBrowsePath || selectedEntry.path}
+            onSuccess={handleRefreshAfterAction}
+          />
+          <NewFileDialog
+            open={showNewFileDialog}
+            onOpenChange={setShowNewFileDialog}
             parentPath={selectedEntry.is_dir ? selectedEntry.path : currentBrowsePath || selectedEntry.path}
             onSuccess={handleRefreshAfterAction}
           />
@@ -697,15 +722,26 @@ export function FileBrowser() {
 
       {/* New folder dialog for empty area context menu */}
       {currentBrowsePath && (
-        <NewFolderDialog
-          open={showNewFolderDialog && !selectedEntry}
-          onOpenChange={(open) => {
-            setShowNewFolderDialog(open);
-            if (!open) setSelectedEntry(null);
-          }}
-          parentPath={currentBrowsePath}
-          onSuccess={handleRefreshAfterAction}
-        />
+        <>
+          <NewFolderDialog
+            open={showNewFolderDialog && !selectedEntry}
+            onOpenChange={(open) => {
+              setShowNewFolderDialog(open);
+              if (!open) setSelectedEntry(null);
+            }}
+            parentPath={currentBrowsePath}
+            onSuccess={handleRefreshAfterAction}
+          />
+          <NewFileDialog
+            open={showNewFileDialog && !selectedEntry}
+            onOpenChange={(open) => {
+              setShowNewFileDialog(open);
+              if (!open) setSelectedEntry(null);
+            }}
+            parentPath={currentBrowsePath}
+            onSuccess={handleRefreshAfterAction}
+          />
+        </>
       )}
     </div>
   );
