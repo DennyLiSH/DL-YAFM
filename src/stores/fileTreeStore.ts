@@ -31,6 +31,7 @@ interface FileTreeState {
   browseEntries: FileEntry[];
   browseHistory: string[];
   isLoadingBrowse: boolean;
+  browseViewMode: 'grid' | 'list';
 
   // Preview state
   previewFile: FileEntry | null;
@@ -62,6 +63,7 @@ interface FileTreeState {
   goBack: () => void;
   goToParent: () => Promise<void>;
   refreshBrowse: () => Promise<void>;
+  setBrowseViewMode: (mode: 'grid' | 'list') => void;
 
   // Preview actions
   loadFilePreview: (entry: FileEntry) => Promise<void>;
@@ -107,6 +109,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   browseEntries: [],
   browseHistory: [],
   isLoadingBrowse: false,
+  browseViewMode: 'grid',
 
   // Preview initial state
   previewFile: null,
@@ -438,6 +441,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       set({ isLoadingBrowse: false });
     }
   },
+
+  setBrowseViewMode: (mode) => set({ browseViewMode: mode }),
 
   // Preview actions
   loadFilePreview: async (entry) => {

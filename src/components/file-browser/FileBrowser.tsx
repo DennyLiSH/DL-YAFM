@@ -25,6 +25,8 @@ import {
   RefreshCw,
   ArrowUpNarrowWide,
   ArrowDownWideNarrow,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import type { FileEntry } from '@/types/file';
 import { fileService } from '@/services/fileService';
@@ -42,6 +44,7 @@ export function FileBrowser() {
     rootPath,
     selectedNodes,
     clipboardEntries,
+    browseViewMode,
     setBrowsePath,
     goBack,
     goToParent,
@@ -54,6 +57,7 @@ export function FileBrowser() {
     copySelectedToClipboard,
     cutSelectedToClipboard,
     pasteFromClipboard,
+    setBrowseViewMode,
   } = useFileTreeStore();
 
   const [sortField, setSortField] = useState<SortField>('name');
@@ -370,6 +374,25 @@ export function FileBrowser() {
           >
             <RefreshCw className={`w-4 h-4 ${isLoadingBrowse ? 'animate-spin' : ''}`} />
           </Button>
+          {/* 视图切换 */}
+          <div className="flex border-l pl-1 ml-1">
+            <Button
+              variant={browseViewMode === 'grid' ? 'outline' : 'ghost'}
+              size="icon"
+              onClick={() => setBrowseViewMode('grid')}
+              title="图标视图"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </Button>
+            <Button
+              variant={browseViewMode === 'list' ? 'outline' : 'ghost'}
+              size="icon"
+              onClick={() => setBrowseViewMode('list')}
+              title="列表视图"
+            >
+              <List className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -393,37 +416,39 @@ export function FileBrowser() {
         </div>
       )}
 
-      {/* Table Header */}
-      <div className="grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground">
-        <button
-          className="flex items-center hover:text-foreground text-left"
-          onClick={() => handleSort('name')}
-        >
-          名称
-          <SortIcon field="name" />
-        </button>
-        <button
-          className="flex items-center hover:text-foreground text-right"
-          onClick={() => handleSort('size')}
-        >
-          大小
-          <SortIcon field="size" />
-        </button>
-        <button
-          className="flex items-center hover:text-foreground text-right"
-          onClick={() => handleSort('type')}
-        >
-          类型
-          <SortIcon field="type" />
-        </button>
-        <button
-          className="flex items-center hover:text-foreground text-right"
-          onClick={() => handleSort('modified')}
-        >
-          修改日期
-          <SortIcon field="modified" />
-        </button>
-      </div>
+      {/* Table Header - 仅列表视图显示 */}
+      {browseViewMode === 'list' && (
+        <div className="grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground">
+          <button
+            className="flex items-center hover:text-foreground text-left"
+            onClick={() => handleSort('name')}
+          >
+            名称
+            <SortIcon field="name" />
+          </button>
+          <button
+            className="flex items-center hover:text-foreground text-right"
+            onClick={() => handleSort('size')}
+          >
+            大小
+            <SortIcon field="size" />
+          </button>
+          <button
+            className="flex items-center hover:text-foreground text-right"
+            onClick={() => handleSort('type')}
+          >
+            类型
+            <SortIcon field="type" />
+          </button>
+          <button
+            className="flex items-center hover:text-foreground text-right"
+            onClick={() => handleSort('modified')}
+          >
+            修改日期
+            <SortIcon field="modified" />
+          </button>
+        </div>
+      )}
 
       {/* File List */}
       <ScrollArea className="flex-1">
@@ -442,7 +467,60 @@ export function FileBrowser() {
               <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
                 空文件夹
               </div>
+            ) : browseViewMode === 'grid' ? (
+              /* Grid 视图 */
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-2 p-2">
+                {sortedEntries.map((entry, index) => {
+                  const isSelected = selectedNodes.has(entry.path);
+                  const selectedCount = hasMultiSelection && isSelected ? selectedNodes.size : 1;
+
+                  return (
+                    <FileBrowserContextMenu
+                      key={entry.path}
+                      entry={entry}
+                      selectedCount={selectedCount}
+                      onRefresh={handleRefreshAfterAction}
+                      onRename={() => {
+                        setSelectedEntry(entry);
+                        setShowRenameDialog(true);
+                      }}
+                      onDelete={() => {
+                        setSelectedEntry(entry);
+                        setShowDeleteDialog(true);
+                      }}
+                      onNewFolder={() => {
+                        setSelectedEntry(entry);
+                        setShowNewFolderDialog(true);
+                      }}
+                      onOpenFolder={() => handleOpenFolder(entry)}
+                      onOpenFile={() => handleOpenFile(entry)}
+                      onCopy={() => handleCopy(entry)}
+                      onCut={() => handleCut(entry)}
+                      onClearSelection={clearSelection}
+                      hasClipboard={clipboardEntries.length > 0}
+                      onPaste={() => handlePaste(entry)}
+                    >
+                      <div
+                        className={cn(
+                          'flex flex-col items-center justify-center p-3 rounded-lg cursor-pointer transition-colors',
+                          'hover:bg-accent',
+                          isSelected && 'bg-primary/20 ring-1 ring-primary/50',
+                          isSelected && hasMultiSelection && 'bg-primary/30'
+                        )}
+                        onClick={(e) => handleRowClick(e, entry, index)}
+                        onDoubleClick={() => handleDoubleClick(entry)}
+                      >
+                        <span className="text-3xl mb-2">{getFileIcon(entry)}</span>
+                        <span className="text-xs text-center truncate w-full" title={entry.name}>
+                          {entry.name}
+                        </span>
+                      </div>
+                    </FileBrowserContextMenu>
+                  );
+                })}
+              </div>
             ) : (
+              /* List 视图 */
               <div className="divide-y">
                 {sortedEntries.map((entry, index) => {
                   const isSelected = selectedNodes.has(entry.path);
