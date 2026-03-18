@@ -55,4 +55,11 @@ export const pluginService = {
   async getPluginDirectory(): Promise<string> {
     return invoke('get_plugin_directory');
   },
+
+  /**
+   * 在文件管理器中打开插件目录
+   */
+  async openPluginDirectory(): Promise<void> {
+    return invoke('open_plugin_directory');
+  },
 };

@@ -680,3 +680,137 @@ pub fn open_file_safe(app: AppHandle, path: String) -> Result<()> {
 
     Ok(())
 }
+
+/// Editor information for "Open with" feature
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EditorInfo {
+    pub id: String,
+    pub name: String,
+    pub available: bool,
+}
+
+/// Check if a command is available in the system PATH
+fn is_command_available(cmd: &str) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("where")
+            .arg(cmd)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("which")
+            .arg(cmd)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+}
+
+/// Get the command to launch an editor by its ID
+fn get_editor_command(editor_id: &str) -> Option<&'static str> {
+    match editor_id {
+        "vscode" => Some("code"),
+        "vscodium" => Some("codium"),
+        "cursor" => Some("cursor"),
+        "sublime" => {
+            #[cfg(target_os = "windows")]
+            { Some("sublime_text") }
+            #[cfg(not(target_os = "windows"))]
+            { Some("subl") }
+        }
+        "notepad++" => {
+            #[cfg(target_os = "windows")]
+            { Some("notepad++") }
+            #[cfg(not(target_os = "windows"))]
+            { None }
+        }
+        _ => None,
+    }
+}
+
+/// Detect available editors on the system
+#[tauri::command]
+pub fn detect_editors() -> Vec<EditorInfo> {
+    let editors = vec![
+        ("vscode", "VS Code", "code"),
+        ("vscodium", "VSCodium", "codium"),
+        ("cursor", "Cursor", "cursor"),
+        ("sublime", "Sublime Text", {
+            #[cfg(target_os = "windows")]
+            { "sublime_text" }
+            #[cfg(not(target_os = "windows"))]
+            { "subl" }
+        }),
+    ];
+
+    let mut result: Vec<EditorInfo> = editors
+        .into_iter()
+        .map(|(id, name, cmd)| EditorInfo {
+            id: id.to_string(),
+            name: name.to_string(),
+            available: is_command_available(cmd),
+        })
+        .collect();
+
+    // Add Notepad++ only on Windows
+    #[cfg(target_os = "windows")]
+    {
+        result.push(EditorInfo {
+            id: "notepad++".to_string(),
+            name: "Notepad++".to_string(),
+            available: is_command_available("notepad++"),
+        });
+    }
+
+    // Only return available editors
+    result.into_iter().filter(|e| e.available).collect()
+}
+
+/// Open a path with a specified editor (with security check)
+#[tauri::command]
+pub fn open_with_editor(app: AppHandle, path: String, editor_id: String) -> Result<()> {
+    let file_path = Path::new(&path);
+
+    if !file_path.exists() {
+        return Err(FileExplorerError::PathNotFound(path));
+    }
+
+    // Get the canonical path for security check
+    let canonical_path = file_path.canonicalize()
+        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to resolve path: {}", e)))?;
+
+    // Check if the path is within the allowed root directory
+    let root_path_state = app.state::<RootPathState>();
+    let root_path = root_path_state.inner.lock();
+
+    match root_path.as_ref() {
+        Some(root) => {
+            if !canonical_path.starts_with(root) {
+                return Err(FileExplorerError::InvalidPath(
+                    "Access denied: path is outside the allowed directory".to_string()
+                ));
+            }
+        }
+        None => {
+            return Err(FileExplorerError::InvalidPath(
+                "No root directory has been selected".to_string()
+            ));
+        }
+    }
+
+    // Get the editor command
+    let editor_cmd = get_editor_command(&editor_id)
+        .ok_or_else(|| FileExplorerError::InvalidPath(format!("Unknown editor: {}", editor_id)))?;
+
+    // Launch the editor
+    std::process::Command::new(editor_cmd)
+        .arg(&path)
+        .spawn()
+        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to launch editor: {}", e)))?;
+
+    Ok(())
+}

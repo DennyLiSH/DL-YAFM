@@ -4,8 +4,12 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  ContextMenuSub,
+  ContextMenuSubTrigger,
+  ContextMenuSubContent,
 } from '@/components/ui/context-menu';
 import type { FileEntry } from '@/types/file';
+import type { EditorInfo } from '@/services/fileService';
 import {
   FolderPlus,
   FilePlus,
@@ -17,6 +21,7 @@ import {
   Scissors,
   X,
   ExternalLink,
+  Code2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -36,6 +41,8 @@ interface TreeNodeContextMenuProps {
   onClearSelection?: () => void;
   hasClipboard?: boolean;
   onOpen?: () => void;
+  availableEditors?: EditorInfo[];
+  onOpenWithEditor?: (path: string, editorId: string) => void;
 }
 
 export function TreeNodeContextMenu({
@@ -53,6 +60,8 @@ export function TreeNodeContextMenu({
   onClearSelection,
   hasClipboard = false,
   onOpen,
+  availableEditors,
+  onOpenWithEditor,
 }: TreeNodeContextMenuProps) {
   const isMultiSelect = selectedCount > 1;
 
@@ -114,6 +123,25 @@ export function TreeNodeContextMenu({
             </ContextMenuItem>
             <ContextMenuSeparator />
           </>
+        )}
+        {/* 用编辑器打开 */}
+        {availableEditors && availableEditors.length > 0 && onOpenWithEditor && (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <Code2 className="w-4 h-4 mr-2" />
+              用编辑器打开
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {availableEditors.map(editor => (
+                <ContextMenuItem
+                  key={editor.id}
+                  onClick={() => onOpenWithEditor(entry.path, editor.id)}
+                >
+                  {editor.name}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
         )}
         {entry.is_dir && (
           <>

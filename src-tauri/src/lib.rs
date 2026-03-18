@@ -76,6 +76,8 @@ pub fn run() {
             create_file,
             check_path_exists,
             open_file_safe,
+            detect_editors,
+            open_with_editor,
             // Config commands
             get_settings,
             update_settings,
@@ -98,6 +100,7 @@ pub fn run() {
             execute_plugin_action,
             reload_plugins,
             get_plugin_directory,
+            open_plugin_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

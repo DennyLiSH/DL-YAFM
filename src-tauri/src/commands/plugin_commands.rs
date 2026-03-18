@@ -1,4 +1,5 @@
-use tauri::{Manager, State};
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::models::FileEntry;
 use crate::plugin::{
@@ -66,4 +67,28 @@ pub fn get_plugin_directory(
 ) -> Result<String, String> {
     let manager = state.inner.lock();
     Ok(manager.get_plugin_directory().to_string_lossy().to_string())
+}
+
+/// 在文件管理器中打开插件目录
+#[tauri::command]
+pub fn open_plugin_directory(
+    app: AppHandle,
+    state: State<'_, PluginManagerState>,
+) -> Result<(), String> {
+    let manager = state.inner.lock();
+    let plugin_dir = manager.get_plugin_directory().to_path_buf();
+    drop(manager); // 释放锁
+
+    // 确保目录存在
+    if !plugin_dir.exists() {
+        std::fs::create_dir_all(&plugin_dir)
+            .map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+    }
+
+    // 使用 opener 插件打开目录
+    app.opener()
+        .open_path(plugin_dir.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| format!("Failed to open plugin directory: {}", e))?;
+
+    Ok(())
 }

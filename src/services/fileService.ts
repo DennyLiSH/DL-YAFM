@@ -29,6 +29,13 @@ export interface FileChangeEvent {
   timestamp: number;
 }
 
+// Editor information
+export interface EditorInfo {
+  id: string;
+  name: string;
+  available: boolean;
+}
+
 export const fileService = {
   async getDirectoryEntries(path: string): Promise<FileEntry[]> {
     return invoke('get_directory_entries', { path });
@@ -157,5 +164,15 @@ export const fileService = {
   // Open file with system default application (with security check)
   async openWithSystemApp(path: string): Promise<void> {
     return invoke('open_file_safe', { path });
+  },
+
+  // Get available editors on the system
+  async getAvailableEditors(): Promise<EditorInfo[]> {
+    return invoke('detect_editors');
+  },
+
+  // Open path with a specific editor
+  async openWithEditor(path: string, editorId: string): Promise<void> {
+    return invoke('open_with_editor', { path, editorId });
   },
 };

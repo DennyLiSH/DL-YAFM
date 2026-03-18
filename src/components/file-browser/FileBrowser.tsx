@@ -14,8 +14,12 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
+  ContextMenuSub,
+  ContextMenuSubTrigger,
+  ContextMenuSubContent,
+  ContextMenuSeparator,
 } from '@/components/ui/context-menu';
-import { FolderPlus, ClipboardPaste, FilePlus } from 'lucide-react';
+import { FolderPlus, ClipboardPaste, FilePlus, Code2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, getFileIcon } from '@/lib/format';
 import { getErrorMessage } from '@/lib/error';
@@ -31,7 +35,7 @@ import {
   List,
 } from 'lucide-react';
 import type { FileEntry } from '@/types/file';
-import { fileService } from '@/services/fileService';
+import { fileService, type EditorInfo } from '@/services/fileService';
 import { toast } from 'sonner';
 
 type SortField = 'name' | 'size' | 'type' | 'modified';
@@ -71,6 +75,16 @@ export function FileBrowser() {
   const [showNewFileDialog, setShowNewFileDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // Editor state
+  const [availableEditors, setAvailableEditors] = useState<EditorInfo[]>([]);
+
+  // Load available editors on mount
+  useEffect(() => {
+    fileService.getAvailableEditors()
+      .then(setAvailableEditors)
+      .catch(err => console.error('Failed to detect editors:', err));
+  }, []);
 
   // 追踪最后选中的索引用于 Shift 范围选择
   const lastSelectedIndexRef = useRef<number | null>(null);
@@ -364,6 +378,15 @@ export function FileBrowser() {
     }
   };
 
+  // Open with specific editor
+  const handleOpenWithEditor = async (path: string, editorId: string) => {
+    try {
+      await fileService.openWithEditor(path, editorId);
+    } catch (err) {
+      toast.error(`打开失败: ${getErrorMessage(err)}`);
+    }
+  };
+
   const handleRefresh = () => {
     refreshBrowse();
   };
@@ -631,6 +654,8 @@ export function FileBrowser() {
                       onClearSelection={clearSelection}
                       hasClipboard={clipboardEntries.length > 0}
                       onPaste={() => handlePaste(entry)}
+                      availableEditors={availableEditors}
+                      onOpenWithEditor={handleOpenWithEditor}
                     >
                       <div
                         ref={(el) => registerItemRef(entry.path, el)}
@@ -689,6 +714,8 @@ export function FileBrowser() {
                       onClearSelection={clearSelection}
                       hasClipboard={clipboardEntries.length > 0}
                       onPaste={() => handlePaste(entry)}
+                      availableEditors={availableEditors}
+                      onOpenWithEditor={handleOpenWithEditor}
                     >
                       <div
                         ref={(el) => registerItemRef(entry.path, el)}
@@ -732,6 +759,27 @@ export function FileBrowser() {
             </div>
           </ContextMenuTrigger>
           <ContextMenuContent className="w-48">
+            {availableEditors.length > 0 && (
+              <>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>
+                    <Code2 className="w-4 h-4 mr-2" />
+                    用编辑器打开
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent>
+                    {availableEditors.map(editor => (
+                      <ContextMenuItem
+                        key={editor.id}
+                        onClick={() => handleOpenWithEditor(currentBrowsePath || '', editor.id)}
+                      >
+                        {editor.name}
+                      </ContextMenuItem>
+                    ))}
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSeparator />
+              </>
+            )}
             <ContextMenuItem onClick={handleNewFolderInCurrentPath}>
               <FolderPlus className="w-4 h-4 mr-2" />
               新建文件夹

@@ -7,6 +7,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { GlobalSettings } from './GlobalSettings';
 import { FolderSettings } from './FolderSettings';
+import { PluginSettings } from './PluginSettings';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -28,8 +29,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             <TabsTrigger value="folder" className="flex-1">
               文件夹设置
             </TabsTrigger>
-            <TabsTrigger value="feature-a" className="flex-1">
-              A 功能
+            <TabsTrigger value="plugins" className="flex-1">
+              插件
             </TabsTrigger>
           </TabsList>
           <TabsContent value="global">
@@ -38,10 +39,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           <TabsContent value="folder">
             <FolderSettings />
           </TabsContent>
-          <TabsContent value="feature-a">
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <p className="text-sm">功能开发中...</p>
-            </div>
+          <TabsContent value="plugins">
+            <PluginSettings />
           </TabsContent>
         </Tabs>
       </DialogContent>
