@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/context-menu';
 import { FolderPlus, ClipboardPaste, FilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatFileSize, formatDate, getFileIcon } from '@/lib/format';
+import { formatDate, getFileIcon } from '@/lib/format';
 import { getErrorMessage } from '@/lib/error';
 import { cn } from '@/lib/utils';
 import {
@@ -556,27 +556,13 @@ export function FileBrowser() {
 
       {/* Table Header - 仅列表视图显示 */}
       {browseViewMode === 'list' && (
-        <div className="grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-[1fr_100px] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground">
           <button
             className="flex items-center hover:text-foreground text-left"
             onClick={() => handleSort('name')}
           >
             名称
             <SortIcon field="name" />
-          </button>
-          <button
-            className="flex items-center hover:text-foreground text-right"
-            onClick={() => handleSort('size')}
-          >
-            大小
-            <SortIcon field="size" />
-          </button>
-          <button
-            className="flex items-center hover:text-foreground text-right"
-            onClick={() => handleSort('type')}
-          >
-            类型
-            <SortIcon field="type" />
           </button>
           <button
             className="flex items-center hover:text-foreground text-right"
@@ -708,7 +694,7 @@ export function FileBrowser() {
                         ref={(el) => registerItemRef(entry.path, el)}
                         data-file-item
                         className={cn(
-                          'grid grid-cols-[1fr_80px_80px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center',
+                          'grid grid-cols-[1fr_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center',
                           isSelected && 'bg-primary/20 ring-1 ring-primary/50',
                           isSelected && hasMultiSelection && 'bg-primary/30'
                         )}
@@ -720,14 +706,6 @@ export function FileBrowser() {
                           <span className="text-base flex-shrink-0">{getFileIcon(entry)}</span>
                           <span className="truncate">{entry.name}</span>
                         </div>
-                        {/* Size */}
-                        <span className="text-xs text-muted-foreground text-right">
-                          {entry.is_dir ? '-' : formatFileSize(entry.size)}
-                        </span>
-                        {/* Type */}
-                        <span className="text-xs text-muted-foreground text-right truncate">
-                          {entry.is_dir ? '文件夹' : entry.name.split('.').pop() || '-'}
-                        </span>
                         {/* Modified */}
                         <span className="text-xs text-muted-foreground text-right">
                           {formatDate(entry.modified_at)}

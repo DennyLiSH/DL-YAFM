@@ -104,6 +104,12 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
     }
   }, [isExpanded, entry.is_dir, entry.path, loadNodeChildren]);
 
+  // 箭头点击处理：只展开/收起节点，不影响 FileBrowser
+  const handleArrowClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleNode(entry.path);
+  };
+
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
 
@@ -121,9 +127,8 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
       toggleNodeSelection(entry.path, 'none');
     }
 
-    // 处理文件夹展开（仅在非修饰键情况下）
+    // 处理文件夹：只更新 FileBrowser 显示内容，不展开节点
     if (!isCtrlPressed && !isShiftPressed && entry.is_dir) {
-      toggleNode(entry.path);
       setBrowsePath(entry.path);
       clearPreview();
     }
@@ -472,7 +477,10 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
     >
       {/* Expand/Collapse Arrow */}
       {entry.is_dir && (
-        <span className={cn('w-4 h-4 flex items-center justify-center text-xs transition-transform', isExpanded && 'rotate-90')}>
+        <span
+          className={cn('w-4 h-4 flex items-center justify-center text-xs transition-transform cursor-pointer hover:bg-accent rounded', isExpanded && 'rotate-90')}
+          onClick={handleArrowClick}
+        >
           ▶
         </span>
       )}
