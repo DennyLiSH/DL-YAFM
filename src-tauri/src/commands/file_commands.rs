@@ -4,7 +4,7 @@ use crate::RootPathState;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -26,6 +26,30 @@ pub struct CopyProgress {
     pub speed_mbps: f64,
     pub is_complete: bool,
     pub error: Option<String>,
+}
+
+/// Internal: Copy operation context (immutable references)
+struct CopyCtx<'a> {
+    src: &'a Path,
+    dst: &'a Path,
+    app: &'a AppHandle,
+    task_id: &'a str,
+    source: &'a str,
+    dest: &'a str,
+}
+
+/// Internal: Copy operation stats (read-only)
+struct CopyStats {
+    total_files: usize,
+    total_bytes: u64,
+    start_time: Instant,
+}
+
+/// Internal: Copy operation state (shared mutable)
+struct CopyState {
+    cancelled: Arc<AtomicBool>,
+    files_copied: Arc<AtomicUsize>,
+    bytes_copied: Arc<AtomicU64>,
 }
 
 /// Global copy task state - simplified approach
@@ -232,20 +256,29 @@ pub async fn copy_entry_async(
 
     let start_time = Instant::now();
 
+    // Create context and stats structs
+    let ctx = CopyCtx {
+        src: &src_path,
+        dst: &dest_path,
+        app: &app,
+        task_id: &task_id,
+        source: &source,
+        dest: &dest,
+    };
+    let stats = CopyStats {
+        total_files,
+        total_bytes,
+        start_time,
+    };
+    let state = CopyState {
+        cancelled: cancelled.clone(),
+        files_copied: Arc::new(AtomicUsize::new(0)),
+        bytes_copied: Arc::new(AtomicU64::new(0)),
+    };
+
     // Perform copy
     let result = if is_dir {
-        copy_dir_with_progress(
-            &src_path,
-            &dest_path,
-            cancelled.clone(),
-            &app,
-            &task_id,
-            &source,
-            &dest,
-            total_files,
-            total_bytes,
-            start_time,
-        ).await
+        copy_dir_with_progress(&ctx, &stats, &state).await
     } else {
         // Single file copy
         if cancelled.load(Ordering::SeqCst) {
@@ -325,121 +358,81 @@ pub async fn copy_entry_async(
 
 /// Async recursive directory copy with progress
 async fn copy_dir_with_progress(
-    src: &Path,
-    dst: &Path,
-    cancelled: Arc<AtomicBool>,
-    app: &AppHandle,
-    task_id: &str,
-    source: &str,
-    dest: &str,
-    total_files: usize,
-    total_bytes: u64,
-    start_time: Instant,
+    ctx: &CopyCtx<'_>,
+    stats: &CopyStats,
+    state: &CopyState,
 ) -> Result<()> {
-    // Use shared counters for accurate progress tracking
-    use std::sync::atomic::{AtomicU64, AtomicUsize};
-
-    let files_copied = Arc::new(AtomicUsize::new(0));
-    let bytes_copied = Arc::new(AtomicU64::new(0));
-
-    copy_dir_recursive(
-        src,
-        dst,
-        cancelled.clone(),
-        app,
-        task_id,
-        source,
-        dest,
-        total_files,
-        total_bytes,
-        start_time,
-        files_copied.clone(),
-        bytes_copied.clone(),
-    ).await
+    copy_dir_recursive(ctx, stats, state).await
 }
 
 /// Recursive helper function with progress tracking
 async fn copy_dir_recursive(
-    src: &Path,
-    dst: &Path,
-    cancelled: Arc<AtomicBool>,
-    app: &AppHandle,
-    task_id: &str,
-    source: &str,
-    dest: &str,
-    total_files: usize,
-    total_bytes: u64,
-    start_time: Instant,
-    files_copied: Arc<std::sync::atomic::AtomicUsize>,
-    bytes_copied: Arc<std::sync::atomic::AtomicU64>,
+    ctx: &CopyCtx<'_>,
+    stats: &CopyStats,
+    state: &CopyState,
 ) -> Result<()> {
-    if cancelled.load(Ordering::SeqCst) {
+    if state.cancelled.load(Ordering::SeqCst) {
         return Err(FileExplorerError::InvalidPath("Operation cancelled".to_string()));
     }
 
-    tokio::fs::create_dir_all(dst).await
+    tokio::fs::create_dir_all(ctx.dst).await
         .map_err(FileExplorerError::from)?;
 
-    let mut entries = tokio::fs::read_dir(src).await
+    let mut entries = tokio::fs::read_dir(ctx.src).await
         .map_err(FileExplorerError::from)?;
 
     while let Some(entry) = entries.next_entry().await.map_err(FileExplorerError::from)? {
-        if cancelled.load(Ordering::SeqCst) {
+        if state.cancelled.load(Ordering::SeqCst) {
             return Err(FileExplorerError::InvalidPath("Operation cancelled".to_string()));
         }
 
         let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
+        let dst_path = ctx.dst.join(entry.file_name());
         let file_name = entry.file_name()
             .to_string_lossy()
             .to_string();
 
         if src_path.is_dir() {
-            Box::pin(copy_dir_recursive(
-                &src_path,
-                &dst_path,
-                cancelled.clone(),
-                app,
-                task_id,
-                source,
-                dest,
-                total_files,
-                total_bytes,
-                start_time,
-                files_copied.clone(),
-                bytes_copied.clone(),
-            )).await?;
+            let child_ctx = CopyCtx {
+                src: &src_path,
+                dst: &dst_path,
+                app: ctx.app,
+                task_id: ctx.task_id,
+                source: ctx.source,
+                dest: ctx.dest,
+            };
+            Box::pin(copy_dir_recursive(&child_ctx, stats, state)).await?;
         } else {
             let copied = tokio::fs::copy(&src_path, &dst_path).await
                 .map_err(FileExplorerError::from)?;
 
             // Update counters
-            let current_files = files_copied.fetch_add(1, Ordering::SeqCst) + 1;
-            let current_bytes = bytes_copied.fetch_add(copied, Ordering::SeqCst) + copied;
+            let current_files = state.files_copied.fetch_add(1, Ordering::SeqCst) + 1;
+            let current_bytes = state.bytes_copied.fetch_add(copied, Ordering::SeqCst) + copied;
 
             // Emit progress for each file
-            let elapsed = start_time.elapsed().as_secs_f64();
+            let elapsed = stats.start_time.elapsed().as_secs_f64();
             let speed = if elapsed > 0.0 {
                 (current_bytes as f64) / elapsed / 1024.0 / 1024.0
             } else {
                 0.0
             };
 
-            let percentage = if total_bytes > 0 {
-                (current_bytes as f64 / total_bytes as f64) * 100.0
+            let percentage = if stats.total_bytes > 0 {
+                (current_bytes as f64 / stats.total_bytes as f64) * 100.0
             } else {
                 0.0
             };
 
-            let _ = app.emit("copy-progress", CopyProgress {
-                task_id: task_id.to_string(),
-                source: source.to_string(),
-                dest: dest.to_string(),
+            let _ = ctx.app.emit("copy-progress", CopyProgress {
+                task_id: ctx.task_id.to_string(),
+                source: ctx.source.to_string(),
+                dest: ctx.dest.to_string(),
                 current_file: file_name,
                 files_copied: current_files,
-                total_files,
+                total_files: stats.total_files,
                 bytes_copied: current_bytes,
-                total_bytes,
+                total_bytes: stats.total_bytes,
                 percentage,
                 speed_mbps: speed,
                 is_complete: false,

@@ -5,6 +5,10 @@ use super::models::{PluginContext, PluginResult};
 
 /// 默认燃料限制 (100万单位)
 const DEFAULT_FUEL_LIMIT: u64 = 1_000_000;
+/// 最大字符串长度 (1MB)
+const MAX_STRING_LENGTH: usize = 1024 * 1024;
+/// 最大读取迭代次数
+const MAX_READ_ITERATIONS: usize = 10_000_000;
 
 /// 简化版沙箱（不使用 WASI）
 pub struct SimpleSandbox {
@@ -67,6 +71,14 @@ impl SimpleSandbox {
         let bytes = s.as_bytes();
         let len = bytes.len() + 1;
 
+        // 安全检查：防止写入过大的字符串
+        if len > MAX_STRING_LENGTH {
+            return Err(PluginError::MemoryAccessError(format!(
+                "String too large: {} bytes (max: {})",
+                len, MAX_STRING_LENGTH
+            )));
+        }
+
         let alloc_func = self.instance
             .get_typed_func::<i32, i32>(&mut self.store, "allocate")
             .map_err(|_| PluginError::MemoryAccessError("allocate not found".to_string()))?;
@@ -92,8 +104,23 @@ impl SimpleSandbox {
         let data = self.memory.data(&self.store);
         let mut bytes = Vec::new();
         let mut offset = ptr as usize;
+        let mut iterations = 0;
 
         while offset < data.len() && data[offset] != 0 {
+            // 安全检查：防止无限循环
+            iterations += 1;
+            if iterations > MAX_READ_ITERATIONS {
+                return Err(PluginError::MemoryAccessError(
+                    "Read string iteration limit exceeded".to_string(),
+                ));
+            }
+            // 安全检查：防止读取过大的字符串
+            if bytes.len() >= MAX_STRING_LENGTH {
+                return Err(PluginError::MemoryAccessError(format!(
+                    "String too large: exceeds {} bytes",
+                    MAX_STRING_LENGTH
+                )));
+            }
             bytes.push(data[offset]);
             offset += 1;
         }

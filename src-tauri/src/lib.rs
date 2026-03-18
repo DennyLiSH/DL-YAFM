@@ -9,7 +9,6 @@ use commands::*;
 use config::ConfigManager;
 use parking_lot::Mutex;
 use plugin::{PluginManager, PluginManagerState};
-use std::sync::Arc;
 use tauri::Manager;
 use std::path::PathBuf;
 

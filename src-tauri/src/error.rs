@@ -1,15 +1,33 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Error)]
 pub enum FileExplorerError {
+    #[error("Path not found: {0}")]
     PathNotFound(String),
+
+    #[error("Permission denied: {0}")]
     PermissionDenied(String),
+
+    #[error("Invalid path: {0}")]
     InvalidPath(String),
+
+    #[error("IO error: {0}")]
     IoError(String),
+
+    #[error("Already exists: {0}")]
     AlreadyExists(String),
+
+    #[error("Directory not empty: {0}")]
     NotEmpty(String),
+
+    #[error("Unknown error: {0}")]
     Unknown(String),
+
+    #[error("Config error: {0}")]
     ConfigError(String),
+
+    #[error("Trash error: {0}")]
     TrashError(String),
 }
 
@@ -31,21 +49,3 @@ impl From<trash::Error> for FileExplorerError {
         FileExplorerError::TrashError(err.to_string())
     }
 }
-
-impl std::fmt::Display for FileExplorerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FileExplorerError::PathNotFound(msg) => write!(f, "Path not found: {}", msg),
-            FileExplorerError::PermissionDenied(msg) => write!(f, "Permission denied: {}", msg),
-            FileExplorerError::InvalidPath(msg) => write!(f, "Invalid path: {}", msg),
-            FileExplorerError::IoError(msg) => write!(f, "IO error: {}", msg),
-            FileExplorerError::AlreadyExists(msg) => write!(f, "Already exists: {}", msg),
-            FileExplorerError::NotEmpty(msg) => write!(f, "Directory not empty: {}", msg),
-            FileExplorerError::Unknown(msg) => write!(f, "Unknown error: {}", msg),
-            FileExplorerError::ConfigError(msg) => write!(f, "Config error: {}", msg),
-            FileExplorerError::TrashError(msg) => write!(f, "Trash error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for FileExplorerError {}
