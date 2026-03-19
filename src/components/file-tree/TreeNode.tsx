@@ -100,10 +100,16 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
   // 使用 ref 追踪是否正在加载，避免 useEffect 无限循环
   const loadingRef = useRef(false);
 
-  // 虚拟根节点自动展开
+  // 虚拟根节点初始化展开标记，确保只展开一次
+  const virtualRootInitializedRef = useRef(false);
+
+  // 虚拟根节点自动展开（只执行一次）
   useEffect(() => {
-    if (isVirtualRoot && entry.is_dir && !isExpanded) {
-      toggleNode(entry.path);
+    if (isVirtualRoot && entry.is_dir && !virtualRootInitializedRef.current) {
+      virtualRootInitializedRef.current = true;
+      if (!isExpanded) {
+        toggleNode(entry.path);
+      }
     }
   }, [isVirtualRoot, entry.is_dir, entry.path, isExpanded, toggleNode]);
 
