@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
+import { useEditorStore } from '@/stores/editorStore';
 import { FileBrowserContextMenu } from './FileBrowserContextMenu';
 import {
   NewFolderDialog,
@@ -35,7 +36,7 @@ import {
   List,
 } from 'lucide-react';
 import type { FileEntry } from '@/types/file';
-import { fileService, type EditorInfo } from '@/services/fileService';
+import { fileService } from '@/services/fileService';
 import { toast } from 'sonner';
 
 type SortField = 'name' | 'size' | 'type' | 'modified';
@@ -76,15 +77,8 @@ export function FileBrowser() {
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  // Editor state
-  const [availableEditors, setAvailableEditors] = useState<EditorInfo[]>([]);
-
-  // Load available editors on mount
-  useEffect(() => {
-    fileService.getAvailableEditors()
-      .then(setAvailableEditors)
-      .catch(err => console.error('Failed to detect editors:', err));
-  }, []);
+  // Editor state from global store (singleton cache)
+  const availableEditors = useEditorStore((state) => state.editors);
 
   // 追踪最后选中的索引用于 Shift 范围选择
   const lastSelectedIndexRef = useRef<number | null>(null);

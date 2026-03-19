@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { useBookmarkStore } from '@/stores/bookmarkStore';
+import { useEditorStore } from '@/stores/editorStore';
 import type { FileEntry } from '@/types/file';
-import type { EditorInfo } from '@/services/fileService';
 import { formatFileSize, formatDate, getFileIcon } from '@/lib/format';
 import { getErrorMessage } from '@/lib/error';
 import { cn } from '@/lib/utils';
@@ -80,15 +80,8 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
 
-  // Editor state (shared across all TreeNodes via static cache)
-  const [availableEditors, setAvailableEditors] = useState<EditorInfo[]>([]);
-
-  // Load editors once on mount
-  useEffect(() => {
-    fileService.getAvailableEditors()
-      .then(setAvailableEditors)
-      .catch(err => console.error('Failed to detect editors:', err));
-  }, []);
+  // Editor state from global store (singleton cache)
+  const availableEditors = useEditorStore((state) => state.editors);
 
   // Open with specific editor
   const handleOpenWithEditor = async (path: string, editorId: string) => {

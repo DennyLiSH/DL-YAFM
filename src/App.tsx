@@ -9,6 +9,7 @@ import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBookmarkStore } from '@/stores/bookmarkStore';
 import { usePluginStore } from '@/stores/pluginStore';
+import { useEditorStore } from '@/stores/editorStore';
 import { fileService } from '@/services/fileService';
 import { detectLegacyData, executeMigration } from '@/utils/migration';
 import { Toaster } from '@/components/ui/sonner';
@@ -23,6 +24,7 @@ function App() {
   const { theme, initialize: initSettings } = useSettingsStore();
   const { initialize: initBookmarks } = useBookmarkStore();
   const { initialize: initPlugins } = usePluginStore();
+  const loadEditors = useEditorStore((state) => state.loadEditors);
 
   // Theme system implementation
   useEffect(() => {
@@ -64,7 +66,10 @@ function App() {
       // 2. Initialize all stores (load from backend)
       await Promise.all([initSettings(), initBookmarks(), initPlugins()]);
 
-      // 3. Prompt user to select a folder
+      // 3. Load available editors (singleton cache, only once)
+      loadEditors();
+
+      // 4. Prompt user to select a folder
       const path = await fileService.selectAndGrantDirectory();
       if (path) {
         setRootPath(path);
@@ -73,7 +78,7 @@ function App() {
     };
 
     initializeApp();
-  }, [setRootPath, loadRootEntries, initSettings, initBookmarks, initPlugins]);
+  }, [setRootPath, loadRootEntries, initSettings, initBookmarks, initPlugins, loadEditors]);
 
   return (
     <div className="flex flex-col h-screen bg-background">
