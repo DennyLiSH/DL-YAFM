@@ -28,15 +28,13 @@ interface ColumnConfig {
 
 // 默认列配置
 const DEFAULT_COLUMNS: ColumnConfig[] = [
-  { id: 'type', label: '类型', width: 'w-16', visible: true },
-  { id: 'size', label: '大小', width: 'w-20', visible: true },
   { id: 'modified', label: '修改日期', width: 'w-28', visible: true },
-  { id: 'created', label: '创建日期', width: 'w-28', visible: true },
 ];
 
 export function FileTree() {
   const {
     rootPath,
+    isSystemRoot,
     rootEntries,
     isLoading,
     error,
@@ -75,8 +73,8 @@ export function FileTree() {
       // Ctrl/Cmd + A: 全选
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault();
-        if (rootPath) {
-          selectAll(rootPath);
+        if (rootPath || isSystemRoot) {
+          selectAll(rootPath || 'system-root');
         }
       }
 
@@ -111,13 +109,13 @@ export function FileTree() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [rootPath, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries]);
+  }, [rootPath, isSystemRoot, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries]);
 
   useEffect(() => {
-    if (rootPath) {
+    if (rootPath || isSystemRoot) {
       loadRootEntries();
     }
-  }, [rootPath, loadRootEntries]);
+  }, [rootPath, isSystemRoot, loadRootEntries]);
 
   const handleSelectFolder = async () => {
     try {
@@ -134,7 +132,7 @@ export function FileTree() {
   // 刷新当前选中目录，如果没有选中则刷新根目录
   const handleRefresh = useCallback(() => {
     const firstSelected = selectedNodes.size > 0 ? Array.from(selectedNodes)[0] : null;
-    if (firstSelected && firstSelected !== rootPath) {
+    if (firstSelected && firstSelected !== rootPath && firstSelected !== 'system-root') {
       // 刷新选中的节点
       refreshNode(firstSelected);
     } else {
@@ -193,6 +191,21 @@ export function FileTree() {
 
   // 虚拟根节点：代表 rootPath 本身作为第一个可操作节点
   const rootNode: FileEntry | null = useMemo(() => {
+    // System root mode (My Computer on Windows)
+    if (isSystemRoot) {
+      return {
+        path: 'system-root',
+        name: '我的电脑',
+        is_dir: true,
+        size: 0,
+        modified_at: null,
+        created_at: null,
+        is_readonly: false,
+        is_hidden: false,
+        extension: null,
+      };
+    }
+
     if (!rootPath) return null;
     return {
       path: rootPath,
@@ -205,7 +218,7 @@ export function FileTree() {
       is_hidden: false,
       extension: null,
     };
-  }, [rootPath]);
+  }, [rootPath, isSystemRoot]);
 
   // 拖拽开始
   const handleDragStart = (e: React.DragEvent, columnId: string) => {
@@ -296,26 +309,15 @@ export function FileTree() {
     </div>
   );
 
-  if (!rootPath) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-        <FolderOpen className="w-16 h-16 opacity-50" />
-        <p className="text-lg">选择一个文件夹开始浏览</p>
-        <Button onClick={handleSelectFolder}>
-          选择文件夹
-        </Button>
-      </div>
-    );
-  }
-
+  // We always have a root now (system root or selected folder)
   return (
     <div className="flex flex-col h-full">
       {/* Header with Search and Context Menu */}
       <ContextMenu>
         <ContextMenuTrigger className="flex items-center gap-2 px-3 py-2 border-b cursor-context-menu w-full">
           <FolderOpen className="w-4 h-4 shrink-0" />
-          <span className="text-sm font-medium truncate max-w-[120px]" title={rootPath || ''}>
-            {rootPath?.split(/[\\/]/).pop() || rootPath}
+          <span className="text-sm font-medium truncate max-w-[120px]" title={isSystemRoot ? '我的电脑' : (rootPath || '')}>
+            {isSystemRoot ? '我的电脑' : (rootPath?.split(/[\\/]/).pop() || rootPath)}
           </span>
           <div className="flex gap-1 ml-auto">
             <Button variant="ghost" size="icon" onClick={handleSelectFolder} title="切换文件夹">
@@ -355,16 +357,20 @@ export function FileTree() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onClick={() => setShowNewFolderDialog(true)}>
-            <FolderPlus className="w-4 h-4 mr-2" />
-            新建文件夹
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => setShowNewFileDialog(true)}>
-            <FilePlus className="w-4 h-4 mr-2" />
-            新建文件
-          </ContextMenuItem>
-          {clipboardEntries.length > 0 && (
+          {!isSystemRoot && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => setShowNewFolderDialog(true)}>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                新建文件夹
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => setShowNewFileDialog(true)}>
+                <FilePlus className="w-4 h-4 mr-2" />
+                新建文件
+              </ContextMenuItem>
+            </>
+          )}
+          {clipboardEntries.length > 0 && !isSystemRoot && (
             <>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={async () => {

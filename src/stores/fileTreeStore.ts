@@ -4,6 +4,42 @@ import { useCopyProgressStore } from '@/stores/copyProgressStore';
 import type { FileEntry, TreeNodeState, PreviewType } from '@/types/file';
 import { getErrorMessage } from '@/lib/error';
 
+/**
+ * Build a chain of parent directory paths from root to the given path
+ * Used to expand all ancestors in FileTree when navigating to a nested directory
+ */
+function buildParentChain(
+  path: string,
+  rootPath: string | null,
+  isSystemRoot: boolean
+): string[] {
+  const chain: string[] = [];
+  const separator = path.includes('\\') ? '\\' : '/';
+  const parts = path.split(/[\\/]/).filter(Boolean);
+
+  // Build path from root
+  let currentPath = '';
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!part) continue;
+
+    if (isSystemRoot && currentPath === '') {
+      // System root mode: first part is drive letter (e.g., "C:")
+      currentPath = part + '\\';
+    } else {
+      currentPath = currentPath ? `${currentPath}${separator}${part}` : part;
+    }
+
+    // Skip if we're still within the root path
+    if (rootPath && currentPath === rootPath) continue;
+
+    chain.push(currentPath);
+  }
+
+  return chain;
+}
+
 // Clipboard entry type for copy/paste functionality
 export interface ClipboardEntry {
   sourcePath: string;
@@ -15,6 +51,7 @@ export interface ClipboardEntry {
 interface FileTreeState {
   // State
   rootPath: string | null;
+  isSystemRoot: boolean;  // Whether we're browsing system root (My Computer /)
   rootEntries: FileEntry[];
   expandedNodes: Set<string>;
   selectedNodes: Set<string>;
@@ -95,6 +132,7 @@ interface FileTreeState {
 export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   // Initial state
   rootPath: null,
+  isSystemRoot: false,
   rootEntries: [],
   expandedNodes: new Set(),
   selectedNodes: new Set(),
@@ -133,7 +171,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
   // Actions
   setRootPath: (path) => {
-    set({ rootPath: path });
+    const isSystemRoot = path === 'system-root';
+    set({ rootPath: isSystemRoot ? null : path, isSystemRoot });
 
     // Initialize watcher if not done
     if (path) {
@@ -322,15 +361,22 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   },
 
   loadRootEntries: async () => {
-    const { rootPath, isLoading } = get();
+    const { rootPath, isLoading, isSystemRoot } = get();
 
     // 防止重复调用
     if (isLoading) return;
-    if (!rootPath) return;
+    if (!rootPath && !isSystemRoot) return;
 
     set({ isLoading: true, error: null });
     try {
-      const entries = await fileService.getDirectoryEntries(rootPath);
+      let entries: FileEntry[];
+      if (isSystemRoot) {
+        entries = await fileService.getSystemRootEntries();
+      } else if (rootPath) {
+        entries = await fileService.getDirectoryEntries(rootPath);
+      } else {
+        entries = [];
+      }
       set({ rootEntries: entries });
     } catch (err) {
       set({ error: getErrorMessage(err) });
@@ -383,7 +429,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
   // Browse actions
   setBrowsePath: async (path) => {
-    const { currentBrowsePath, browseHistory } = get();
+    const { currentBrowsePath, browseHistory, rootPath, isSystemRoot, expandedNodes } = get();
 
     // Add current path to history if it exists and is different
     const newHistory = currentBrowsePath && currentBrowsePath !== path
@@ -391,6 +437,20 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       : browseHistory;
 
     set({ isLoadingBrowse: true, currentBrowsePath: path, browseHistory: newHistory });
+
+    // Expand parent chain in FileTree to reveal current path
+    if (path && (rootPath || isSystemRoot)) {
+      const parentChain = buildParentChain(path, rootPath, isSystemRoot);
+      const newExpanded = new Set(expandedNodes);
+      for (const parent of parentChain) {
+        newExpanded.add(parent);
+      }
+      set({
+        expandedNodes: newExpanded,
+        selectedNodes: new Set([path]),
+        lastSelectedNode: path,
+      });
+    }
 
     try {
       const entries = await fileService.getDirectoryEntries(path);
@@ -683,13 +743,15 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     // Collect all expanded directory paths + root path
     const pathsToWatch: string[] = [];
 
-    // Add root path if it exists
-    if (rootPath) {
+    // Add root path if it exists (skip virtual system-root)
+    if (rootPath && rootPath !== 'system-root') {
       pathsToWatch.push(rootPath);
     }
 
-    // Add all expanded directory paths
+    // Add all expanded directory paths (skip virtual paths)
     for (const path of expandedNodes) {
+      // Skip virtual paths like 'system-root'
+      if (path === 'system-root') continue;
       if (!pathsToWatch.includes(path)) {
         pathsToWatch.push(path);
       }

@@ -69,12 +69,10 @@ function App() {
       // 3. Load available editors (singleton cache, only once)
       loadEditors();
 
-      // 4. Prompt user to select a folder
-      const path = await fileService.selectAndGrantDirectory();
-      if (path) {
-        setRootPath(path);
-        loadRootEntries();
-      }
+      // 4. Initialize with system root (My Computer on Windows, "/" on Unix)
+      await fileService.grantSystemRootAccess();
+      setRootPath('system-root');
+      loadRootEntries();
     };
 
     initializeApp();

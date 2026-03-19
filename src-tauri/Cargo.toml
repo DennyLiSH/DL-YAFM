@@ -34,6 +34,10 @@ once_cell = "1.18"
 trash = "5"
 notify = { version = "6", features = ["serde"] }
 
+# Windows API for drive label (replaces slow wmic calls)
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
+
 # WASM 插件系统
 wasmtime = "25"
 wasmtime-wasi = "25"

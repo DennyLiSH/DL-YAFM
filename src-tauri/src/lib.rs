@@ -59,6 +59,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             // File commands
+            get_system_root_entries,
             grant_directory_access,
             get_directory_entries,
             create_directory,

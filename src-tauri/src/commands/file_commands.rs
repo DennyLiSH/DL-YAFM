@@ -11,6 +11,16 @@ use tauri_plugin_fs::FsExt;
 use tauri_plugin_opener::OpenerExt;
 use base64::{engine::general_purpose::STANDARD, Engine};
 
+// Windows-specific: hide console window when spawning external commands
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Special path marker for system root
+pub const SYSTEM_ROOT_PATH: &str = "system-root";
+
 /// Copy progress information
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CopyProgress {
@@ -59,8 +69,157 @@ use once_cell::sync::Lazy;
 static COPY_CANCEL_FLAGS: Lazy<Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>> =
     Lazy::new(|| Mutex::new(std::collections::HashMap::new()));
 
+/// Get system root entries (drives on Windows, "/" on Unix)
+#[tauri::command]
+pub fn get_system_root_entries() -> Result<Vec<FileEntry>> {
+    #[cfg(target_os = "windows")]
+    {
+        get_windows_drives()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        get_unix_root_entries()
+    }
+}
+
+/// Get Windows drive letters as FileEntries
+#[cfg(target_os = "windows")]
+fn get_windows_drives() -> Result<Vec<FileEntry>> {
+    let mut entries = Vec::new();
+
+    for letter in b'A'..=b'Z' {
+        let drive = format!("{}:\\", letter as char);
+        let path = Path::new(&drive);
+        if path.exists() {
+            // Get drive label if possible
+            let label = get_drive_label(&drive);
+            let name = if label.is_empty() {
+                format!("本地磁盘 (:{})", letter as char)
+            } else {
+                format!("{} (:{})", label, letter as char)
+            };
+
+            entries.push(FileEntry {
+                name,
+                path: drive.clone(),
+                is_dir: true,
+                size: 0,
+                modified_at: None,
+                created_at: None,
+                is_readonly: false,
+                is_hidden: false,
+                extension: None,
+            });
+        }
+    }
+
+    Ok(entries)
+}
+
+/// Get drive label on Windows using Win32 API (fast, no external process)
+#[cfg(target_os = "windows")]
+fn get_drive_label(drive: &str) -> String {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use windows_sys::Win32::Storage::FileSystem::GetVolumeInformationW;
+    use std::ptr::null_mut;
+
+    // Convert drive path to wide string (null-terminated)
+    let wide_path: Vec<u16> = std::ffi::OsStr::new(drive)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut volume_name = [0u16; 256];
+
+    let result = unsafe {
+        GetVolumeInformationW(
+            wide_path.as_ptr(),
+            volume_name.as_mut_ptr(),
+            volume_name.len() as u32,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            0,
+        )
+    };
+
+    if result != 0 {
+        // Find the null terminator
+        let len = volume_name.iter().position(|&c| c == 0).unwrap_or(0);
+        if len > 0 {
+            let label = OsString::from_wide(&volume_name[..len]);
+            if let Ok(s) = label.into_string() {
+                return s;
+            }
+        }
+    }
+
+    String::new()
+}
+
+/// Get Unix root directory entries
+#[cfg(not(target_os = "windows"))]
+fn get_unix_root_entries() -> Result<Vec<FileEntry>> {
+    let root = Path::new("/");
+
+    let entries: Vec<FileEntry> = fs::read_dir(root)
+        .map_err(FileExplorerError::from)?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            FileEntry::from_path(&path)
+        })
+        .collect();
+
+    // Sort: directories first, then by name
+    let mut entries = entries;
+    entries.sort_by(|a, b| {
+        if a.is_dir == b.is_dir {
+            a.name.to_lowercase().cmp(&b.name.to_lowercase())
+        } else if a.is_dir {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    });
+
+    Ok(entries)
+}
+
 #[tauri::command]
 pub fn grant_directory_access(app: AppHandle, path: String) -> Result<()> {
+    // Handle system root access
+    if path == SYSTEM_ROOT_PATH {
+        #[cfg(target_os = "windows")]
+        {
+            let scope = app.fs_scope();
+            for letter in b'A'..=b'Z' {
+                let drive = format!("{}:\\", letter as char);
+                if Path::new(&drive).exists() {
+                    let _ = scope.allow_directory(&drive, true);
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let scope = app.fs_scope();
+            scope.allow_directory("/", true).map_err(|e| {
+                FileExplorerError::InvalidPath(format!("Failed to grant root access: {}", e))
+            })?;
+        }
+
+        // Set root path state to None (system root mode)
+        let root_path_state = app.state::<RootPathState>();
+        let mut root_path = root_path_state.inner.lock();
+        *root_path = None;
+
+        return Ok(());
+    }
+
     let dir_path = Path::new(&path);
 
     if !dir_path.exists() {
@@ -87,6 +246,11 @@ pub fn grant_directory_access(app: AppHandle, path: String) -> Result<()> {
 
 #[tauri::command]
 pub fn get_directory_entries(path: String) -> Result<Vec<FileEntry>> {
+    // Handle system root
+    if path == SYSTEM_ROOT_PATH {
+        return get_system_root_entries();
+    }
+
     let dir_path = Path::new(&path);
 
     if !dir_path.exists() {
@@ -688,6 +852,7 @@ fn is_command_available(cmd: &str) -> bool {
     {
         std::process::Command::new("where")
             .arg(cmd)
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)

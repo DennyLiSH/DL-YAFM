@@ -34,10 +34,7 @@ interface TreeNodeProps {
 
 // 默认列配置
 const DEFAULT_COLUMNS: ColumnConfig[] = [
-  { id: 'type', label: '类型', width: 'w-16', visible: true },
-  { id: 'size', label: '大小', width: 'w-20', visible: true },
   { id: 'modified', label: '修改日期', width: 'w-28', visible: true },
-  { id: 'created', label: '创建日期', width: 'w-28', visible: true },
 ];
 
 export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoot = false }: TreeNodeProps) {
@@ -459,7 +456,7 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
         );
       case 'modified':
         return (
-          <span key={columnId} className="text-xs text-muted-foreground w-28 text-right shrink-0 hidden md:block">
+          <span key={columnId} className="text-xs text-muted-foreground w-28 text-right shrink-0">
             {formatDate(entry.modified_at)}
           </span>
         );

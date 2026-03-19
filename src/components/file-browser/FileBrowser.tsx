@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/context-menu';
 import { FolderPlus, ClipboardPaste, FilePlus, Code2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatDate, getFileIcon } from '@/lib/format';
+import { formatDate, formatFileSize, getFileIcon } from '@/lib/format';
 import { getErrorMessage } from '@/lib/error';
 import { cn } from '@/lib/utils';
 import {
@@ -49,6 +49,7 @@ export function FileBrowser() {
     browseHistory,
     isLoadingBrowse,
     rootPath,
+    isSystemRoot,
     selectedNodes,
     clipboardEntries,
     browseViewMode,
@@ -478,7 +479,7 @@ export function FileBrowser() {
     );
   };
 
-  if (!rootPath) {
+  if (!rootPath && !isSystemRoot) {
     return (
       <div className="flex flex-col h-full">
         <div className="px-4 py-2 border-b">
@@ -573,7 +574,7 @@ export function FileBrowser() {
 
       {/* Table Header - 仅列表视图显示 */}
       {browseViewMode === 'list' && (
-        <div className="grid grid-cols-[1fr_100px] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-[1fr_60px_70px_100px_100px] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground">
           <button
             className="flex items-center hover:text-foreground text-left"
             onClick={() => handleSort('name')}
@@ -582,12 +583,27 @@ export function FileBrowser() {
             <SortIcon field="name" />
           </button>
           <button
+            className="flex items-center hover:text-foreground text-left"
+            onClick={() => handleSort('type')}
+          >
+            类型
+            <SortIcon field="type" />
+          </button>
+          <button
+            className="flex items-center hover:text-foreground text-right"
+            onClick={() => handleSort('size')}
+          >
+            大小
+            <SortIcon field="size" />
+          </button>
+          <button
             className="flex items-center hover:text-foreground text-right"
             onClick={() => handleSort('modified')}
           >
             修改日期
             <SortIcon field="modified" />
           </button>
+          <span className="text-right">创建日期</span>
         </div>
       )}
 
@@ -715,7 +731,7 @@ export function FileBrowser() {
                         ref={(el) => registerItemRef(entry.path, el)}
                         data-file-item
                         className={cn(
-                          'grid grid-cols-[1fr_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center',
+                          'grid grid-cols-[1fr_60px_70px_100px_100px] gap-2 px-4 py-1.5 text-sm hover:bg-accent cursor-pointer items-center',
                           isSelected && 'bg-primary/20 ring-1 ring-primary/50',
                           isSelected && hasMultiSelection && 'bg-primary/30'
                         )}
@@ -727,9 +743,21 @@ export function FileBrowser() {
                           <span className="text-base flex-shrink-0">{getFileIcon(entry)}</span>
                           <span className="truncate">{entry.name}</span>
                         </div>
+                        {/* Type */}
+                        <span className="text-xs text-muted-foreground text-left">
+                          {entry.is_dir ? '' : (entry.extension || '-')}
+                        </span>
+                        {/* Size */}
+                        <span className="text-xs text-muted-foreground text-right">
+                          {entry.is_dir ? '' : formatFileSize(entry.size)}
+                        </span>
                         {/* Modified */}
                         <span className="text-xs text-muted-foreground text-right">
                           {formatDate(entry.modified_at)}
+                        </span>
+                        {/* Created */}
+                        <span className="text-xs text-muted-foreground text-right">
+                          {formatDate(entry.created_at)}
                         </span>
                       </div>
                     </FileBrowserContextMenu>

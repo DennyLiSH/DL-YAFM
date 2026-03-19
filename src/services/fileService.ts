@@ -41,6 +41,16 @@ export const fileService = {
     return invoke('get_directory_entries', { path });
   },
 
+  // Get system root entries (drives on Windows, "/" on Unix)
+  async getSystemRootEntries(): Promise<FileEntry[]> {
+    return invoke('get_system_root_entries');
+  },
+
+  // Grant system root access
+  async grantSystemRootAccess(): Promise<void> {
+    return invoke('grant_directory_access', { path: 'system-root' });
+  },
+
   async createDirectory(path: string): Promise<void> {
     return invoke('create_directory', { path });
   },
