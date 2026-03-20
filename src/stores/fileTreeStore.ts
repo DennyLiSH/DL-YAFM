@@ -28,7 +28,12 @@ function buildParentChain(
       // System root mode: first part is drive letter (e.g., "C:")
       currentPath = part + '\\';
     } else {
-      currentPath = currentPath ? `${currentPath}${separator}${part}` : part;
+      // Fix: avoid double separator when currentPath already ends with separator
+      if (currentPath.endsWith(separator)) {
+        currentPath = currentPath + part;
+      } else {
+        currentPath = currentPath ? `${currentPath}${separator}${part}` : part;
+      }
     }
 
     // Skip if we're still within the root path
@@ -442,9 +447,14 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     if (path && (rootPath || isSystemRoot)) {
       const parentChain = buildParentChain(path, rootPath, isSystemRoot);
       const newExpanded = new Set(expandedNodes);
+
+      // Load each parent's children sequentially (must complete before setting selection)
+      // loadNodeChildren has internal guard against duplicate loading
       for (const parent of parentChain) {
         newExpanded.add(parent);
+        await get().loadNodeChildren(parent);
       }
+
       set({
         expandedNodes: newExpanded,
         selectedNodes: new Set([path]),

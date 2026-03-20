@@ -11,6 +11,45 @@ use tauri_plugin_fs::FsExt;
 use tauri_plugin_opener::OpenerExt;
 use base64::{engine::general_purpose::STANDARD, Engine};
 
+/// Sort file entries: directories first, then by name (case-insensitive)
+fn sort_entries(entries: &mut [FileEntry]) {
+    entries.sort_by(|a, b| {
+        if a.is_dir == b.is_dir {
+            a.name.to_lowercase().cmp(&b.name.to_lowercase())
+        } else if a.is_dir {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    });
+}
+
+/// Verify that a path is within the allowed root directory
+/// Returns the canonical path if verification passes
+fn verify_path_within_root(app: &AppHandle, path: &Path) -> Result<std::path::PathBuf> {
+    let canonical_path = path.canonicalize()
+        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to resolve path: {}", e)))?;
+
+    let root_path_state = app.state::<RootPathState>();
+    let root_path = root_path_state.inner.lock();
+
+    match root_path.as_ref() {
+        Some(root) => {
+            if !canonical_path.starts_with(root) {
+                return Err(FileExplorerError::InvalidPath(
+                    "Access denied: path is outside the allowed directory".to_string()
+                ));
+            }
+            Ok(canonical_path)
+        }
+        None => {
+            Err(FileExplorerError::InvalidPath(
+                "No root directory has been selected".to_string()
+            ))
+        }
+    }
+}
+
 // Windows-specific: hide console window when spawning external commands
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -64,10 +103,10 @@ struct CopyState {
 
 /// Global copy task state - simplified approach
 use parking_lot::Mutex;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
-static COPY_CANCEL_FLAGS: Lazy<Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>> =
-    Lazy::new(|| Mutex::new(std::collections::HashMap::new()));
+static COPY_CANCEL_FLAGS: LazyLock<Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 /// Get system root entries (drives on Windows, "/" on Unix)
 #[tauri::command]
@@ -86,7 +125,8 @@ pub fn get_system_root_entries() -> Result<Vec<FileEntry>> {
 /// Get Windows drive letters as FileEntries
 #[cfg(target_os = "windows")]
 fn get_windows_drives() -> Result<Vec<FileEntry>> {
-    let mut entries = Vec::new();
+    // Pre-allocate for max 26 drives (A-Z)
+    let mut entries = Vec::with_capacity(26);
 
     for letter in b'A'..=b'Z' {
         let drive = format!("{}:\\", letter as char);
@@ -174,17 +214,7 @@ fn get_unix_root_entries() -> Result<Vec<FileEntry>> {
         })
         .collect();
 
-    // Sort: directories first, then by name
-    let mut entries = entries;
-    entries.sort_by(|a, b| {
-        if a.is_dir == b.is_dir {
-            a.name.to_lowercase().cmp(&b.name.to_lowercase())
-        } else if a.is_dir {
-            std::cmp::Ordering::Less
-        } else {
-            std::cmp::Ordering::Greater
-        }
-    });
+    sort_entries(&mut entries);
 
     Ok(entries)
 }
@@ -239,7 +269,9 @@ pub fn grant_directory_access(app: AppHandle, path: String) -> Result<()> {
     // Save the root path for security checks
     let root_path_state = app.state::<RootPathState>();
     let mut root_path = root_path_state.inner.lock();
-    *root_path = Some(dir_path.canonicalize().unwrap_or_else(|_| dir_path.to_path_buf()));
+    *root_path = Some(dir_path.canonicalize().inspect_err(|e| {
+        eprintln!("[WARN] Failed to canonicalize path '{}': {}", dir_path.display(), e);
+    }).unwrap_or_else(|_| dir_path.to_path_buf()));
 
     Ok(())
 }
@@ -261,23 +293,13 @@ pub fn get_directory_entries(path: String) -> Result<Vec<FileEntry>> {
         return Err(FileExplorerError::InvalidPath(format!("{} is not a directory", path)));
     }
 
-    let entries: Vec<FileEntry> = fs::read_dir(dir_path)
+    let mut entries: Vec<FileEntry> = fs::read_dir(dir_path)
         .map_err(FileExplorerError::from)?
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| FileEntry::from_path(&entry.path()))
         .collect();
 
-    // Sort: directories first, then by name
-    let mut entries = entries;
-    entries.sort_by(|a, b| {
-        if a.is_dir == b.is_dir {
-            a.name.to_lowercase().cmp(&b.name.to_lowercase())
-        } else if a.is_dir {
-            std::cmp::Ordering::Less
-        } else {
-            std::cmp::Ordering::Greater
-        }
-    });
+    sort_entries(&mut entries);
 
     Ok(entries)
 }
@@ -397,7 +419,9 @@ pub async fn copy_entry_async(
 
     // Count total files and size for progress tracking
     let (total_files, total_bytes) = if is_dir {
-        count_dir_contents(&src_path).unwrap_or((0, 0))
+        count_dir_contents(&src_path).inspect_err(|e| {
+            eprintln!("[WARN] Failed to count directory contents '{}': {}", src_path.display(), e);
+        }).unwrap_or((0, 0))
     } else {
         (1, fs::metadata(&src_path).map(|m| m.len()).unwrap_or(0))
     };
@@ -705,7 +729,8 @@ pub fn search_files(directory: String, query: String) -> Result<Vec<FileEntry>> 
     }
 
     let query_lower = query.to_lowercase();
-    let mut results = Vec::new();
+    // Pre-allocate for typical search results
+    let mut results = Vec::with_capacity(64);
 
     fn search_recursive(dir: &Path, query: &str, results: &mut Vec<FileEntry>) {
         if let Ok(entries) = fs::read_dir(dir) {
@@ -731,16 +756,7 @@ pub fn search_files(directory: String, query: String) -> Result<Vec<FileEntry>> 
 
     search_recursive(dir_path, &query_lower, &mut results);
 
-    // Sort results
-    results.sort_by(|a, b| {
-        if a.is_dir == b.is_dir {
-            a.name.to_lowercase().cmp(&b.name.to_lowercase())
-        } else if a.is_dir {
-            std::cmp::Ordering::Less
-        } else {
-            std::cmp::Ordering::Greater
-        }
-    });
+    sort_entries(&mut results);
 
     Ok(results)
 }
@@ -806,29 +822,8 @@ pub fn open_file_safe(app: AppHandle, path: String) -> Result<()> {
         return Err(FileExplorerError::PathNotFound(path));
     }
 
-    // Get the canonical path for comparison
-    let canonical_path = file_path.canonicalize()
-        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to resolve path: {}", e)))?;
-
-    // Check if the path is within the allowed root directory
-    let root_path_state = app.state::<RootPathState>();
-    let root_path = root_path_state.inner.lock();
-
-    match root_path.as_ref() {
-        Some(root) => {
-            // Check if the file is within the root directory
-            if !canonical_path.starts_with(root) {
-                return Err(FileExplorerError::InvalidPath(
-                    "Access denied: path is outside the allowed directory".to_string()
-                ));
-            }
-        }
-        None => {
-            return Err(FileExplorerError::InvalidPath(
-                "No root directory has been selected".to_string()
-            ));
-        }
-    }
+    // Verify path is within allowed root directory
+    verify_path_within_root(&app, file_path)?;
 
     // Open the file with system default application
     app.opener()
@@ -937,28 +932,8 @@ pub fn open_with_editor(app: AppHandle, path: String, editor_id: String) -> Resu
         return Err(FileExplorerError::PathNotFound(path));
     }
 
-    // Get the canonical path for security check
-    let canonical_path = file_path.canonicalize()
-        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to resolve path: {}", e)))?;
-
-    // Check if the path is within the allowed root directory
-    let root_path_state = app.state::<RootPathState>();
-    let root_path = root_path_state.inner.lock();
-
-    match root_path.as_ref() {
-        Some(root) => {
-            if !canonical_path.starts_with(root) {
-                return Err(FileExplorerError::InvalidPath(
-                    "Access denied: path is outside the allowed directory".to_string()
-                ));
-            }
-        }
-        None => {
-            return Err(FileExplorerError::InvalidPath(
-                "No root directory has been selected".to_string()
-            ));
-        }
-    }
+    // Verify path is within allowed root directory
+    verify_path_within_root(&app, file_path)?;
 
     // Get the editor command
     let editor_cmd = get_editor_command(&editor_id)

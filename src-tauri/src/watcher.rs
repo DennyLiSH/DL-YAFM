@@ -1,5 +1,5 @@
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::path::Path;
@@ -30,7 +30,7 @@ pub struct FileChangeEvent {
 }
 
 /// Global watcher state
-static WATCHER_STATE: Lazy<Arc<Mutex<WatcherState>>> = Lazy::new(|| {
+static WATCHER_STATE: LazyLock<Arc<Mutex<WatcherState>>> = LazyLock::new(|| {
     Arc::new(Mutex::new(WatcherState {
         watcher: None,
         watched_paths: HashSet::new(),

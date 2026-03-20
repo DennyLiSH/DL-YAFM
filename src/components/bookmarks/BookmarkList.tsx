@@ -8,14 +8,15 @@ import { getErrorMessage } from '@/lib/error';
 
 export function BookmarkList() {
   const { bookmarks, removeBookmark } = useBookmarkStore();
-  const { setRootPath, loadRootEntries, rootPath } = useFileTreeStore();
+  const { setBrowsePath, rootPath } = useFileTreeStore();
 
   const handleBookmarkClick = async (path: string) => {
     try {
       // Grant access and navigate
       await fileService.grantDirectoryAccess(path);
-      setRootPath(path);
-      loadRootEntries();
+      // ✅ 只更新浏览路径，不影响 FileTree 根节点
+      // setBrowsePath 会自动展开 FileTree 并选中目标节点
+      await setBrowsePath(path);
     } catch (err) {
       toast.error(`无法访问: ${getErrorMessage(err)}`);
     }
@@ -44,7 +45,6 @@ export function BookmarkList() {
           key={bookmark.id}
           className={cn(
             'flex items-center gap-2 px-3 py-2 cursor-pointer rounded hover:bg-accent group',
-            rootPath === bookmark.path && 'bg-accent'
           )}
           onClick={() => handleBookmarkClick(bookmark.path)}
         >

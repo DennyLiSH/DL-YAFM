@@ -11,6 +11,14 @@ pub struct AppConfigState {
     pub manager: ConfigManager,
 }
 
+/// Get current Unix timestamp in seconds
+fn current_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 // ==================== Settings Commands ====================
 
 #[tauri::command]
@@ -54,10 +62,7 @@ pub fn add_bookmark(state: State<AppConfigState>, name: String, path: String) ->
         id: Uuid::new_v4().to_string(),
         name,
         path,
-        created_at: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        created_at: current_timestamp(),
     };
 
     config.bookmarks.push(bookmark.clone());
@@ -104,10 +109,7 @@ pub fn add_chat_message(
         id: Uuid::new_v4().to_string(),
         role,
         content,
-        timestamp: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        timestamp: current_timestamp(),
     };
 
     config.chat_messages.push(message.clone());

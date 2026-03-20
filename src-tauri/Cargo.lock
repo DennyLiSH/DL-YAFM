@@ -1093,7 +1093,6 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "notify",
- "once_cell",
  "parking_lot",
  "serde",
  "serde_json",
@@ -1104,7 +1103,6 @@ dependencies = [
  "tauri-plugin-opener",
  "thiserror 1.0.69",
  "tokio",
- "tokio-util",
  "trash",
  "uuid",
  "wasmtime",

@@ -26,8 +26,9 @@ pub fn run() {
         .setup(|app| {
             // Initialize config manager
             let manager = ConfigManager::new(app.handle())
-                .expect("Failed to initialize config manager");
-            let config = manager.load().expect("Failed to load config");
+                .map_err(|e| format!("Failed to initialize config manager: {}", e))?;
+            let config = manager.load()
+                .map_err(|e| format!("Failed to load config: {}", e))?;
 
             // Setup global state
             app.manage(AppConfigState {
@@ -42,11 +43,11 @@ pub fn run() {
 
             // Initialize plugin manager
             let plugin_dir = app.path().app_data_dir()
-                .expect("Failed to get app data dir")
+                .map_err(|e| format!("Failed to get app data dir: {}", e))?
                 .join("plugins");
 
             let plugin_manager = PluginManager::new(plugin_dir)
-                .expect("Failed to initialize plugin manager");
+                .map_err(|e| format!("Failed to initialize plugin manager: {}", e))?;
 
             // Load plugins synchronously (in production, consider async)
             tauri::async_runtime::block_on(async {
