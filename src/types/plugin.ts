@@ -3,21 +3,21 @@
  */
 export interface PluginManifest {
   /** 插件唯一标识 (反向域名格式) */
-  id: string;
+  readonly id: string;
   /** 显示名称 */
-  name: string;
+  readonly name: string;
   /** 版本号 */
-  version: string;
+  readonly version: string;
   /** 描述 */
-  description?: string;
+  readonly description?: string;
   /** 作者 */
-  author?: string;
+  readonly author?: string;
   /** 最低应用版本 */
-  minAppVersion?: string;
+  readonly minAppVersion?: string;
   /** 所需权限列表 */
-  permissions?: string[];
+  readonly permissions?: readonly string[];
   /** 菜单项配置 */
-  menuItems: PluginMenuItemConfig[];
+  readonly menuItems: readonly PluginMenuItemConfig[];
 }
 
 /**
@@ -25,17 +25,17 @@ export interface PluginManifest {
  */
 export interface PluginMenuItemConfig {
   /** 菜单项 ID */
-  id: string;
+  readonly id: string;
   /** 显示文本 */
-  label: string;
+  readonly label: string;
   /** 图标名称 */
-  icon?: string;
+  readonly icon?: string;
   /** 适用的上下文 */
-  contexts?: PluginContext[];
+  readonly contexts?: readonly PluginContext[];
   /** 排序优先级 */
-  order?: number;
+  readonly order?: number;
   /** 是否禁用 */
-  disabled?: boolean;
+  readonly disabled?: boolean;
 }
 
 /**
@@ -48,14 +48,14 @@ export type PluginContext = 'file' | 'folder' | 'multi-select';
  */
 export interface PluginMenuItem {
   /** 所属插件 ID */
-  pluginId: string;
+  readonly pluginId: string;
   /** 菜单项配置 */
-  id: string;
-  label: string;
-  icon?: string;
-  contexts?: PluginContext[];
-  order?: number;
-  disabled?: boolean;
+  readonly id: string;
+  readonly label: string;
+  readonly icon?: string;
+  readonly contexts?: readonly PluginContext[];
+  readonly order?: number;
+  readonly disabled?: boolean;
 }
 
 /**
@@ -63,17 +63,17 @@ export interface PluginMenuItem {
  */
 export interface PluginInfo {
   /** 插件 ID */
-  id: string;
+  readonly id: string;
   /** 显示名称 */
-  name: string;
+  readonly name: string;
   /** 版本号 */
-  version: string;
+  readonly version: string;
   /** 描述 */
-  description: string;
+  readonly description: string;
   /** 作者 */
-  author: string;
+  readonly author: string;
   /** 是否启用 */
-  enabled: boolean;
+  readonly enabled: boolean;
 }
 
 /**
@@ -81,11 +81,11 @@ export interface PluginInfo {
  */
 export interface PluginResult {
   /** 是否成功 */
-  success: boolean;
+  readonly success: boolean;
   /** 消息 */
-  message?: string;
+  readonly message?: string;
   /** 要执行的动作列表 */
-  actions?: PluginAction[];
+  readonly actions?: readonly PluginAction[];
 }
 
 /**

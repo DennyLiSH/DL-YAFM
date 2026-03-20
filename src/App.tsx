@@ -47,6 +47,7 @@ function App() {
       return () => mediaQuery.removeEventListener('change', handler);
     } else {
       applyTheme(theme === 'dark');
+      return undefined;
     }
   }, [theme]);
 

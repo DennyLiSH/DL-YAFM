@@ -1,5 +1,5 @@
 import { visit } from 'unist-util-visit';
-import type { Root, Text } from 'hast';
+import type { Root, Text, Parent, Element, Properties } from 'hast';
 
 /**
  * Rehype plugin to convert ==highlight== syntax to <mark> elements
@@ -7,7 +7,7 @@ import type { Root, Text } from 'hast';
  */
 export function rehypeHighlightMark() {
   return (tree: Root) => {
-    visit(tree, 'text', (node: Text, index: number | undefined, parent: any) => {
+    visit(tree, 'text', (node: Text, index: number | undefined, parent: Parent | undefined) => {
       if (index === undefined || !parent) return;
 
       const value = node.value;
@@ -17,7 +17,7 @@ export function rehypeHighlightMark() {
 
       if (matches.length === 0) return;
 
-      const newNodes: Array<Text | { type: 'element'; tagName: string; children: Text[] }> = [];
+      const newNodes: Array<Text | Element> = [];
       let lastIndex = 0;
 
       for (const match of matches) {
@@ -38,6 +38,7 @@ export function rehypeHighlightMark() {
         newNodes.push({
           type: 'element',
           tagName: 'mark',
+          properties: {} as Properties,
           children: [{ type: 'text', value: highlightText }],
         });
 

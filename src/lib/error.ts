@@ -11,8 +11,8 @@ export function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'object' && err !== null) {
     const obj = err as Record<string, unknown>;
-    if (typeof obj.message === 'string') return obj.message;
-    if (typeof obj.error === 'string') return obj.error;
+    if (typeof obj['message'] === 'string') return obj['message'];
+    if (typeof obj['error'] === 'string') return obj['error'];
   }
   return '未知错误';
 }

@@ -3,23 +3,23 @@
  */
 export interface FileEntry {
   /** 文件或目录名称 */
-  name: string;
+  readonly name: string;
   /** 完整路径 */
-  path: string;
+  readonly path: string;
   /** 是否为目录 */
-  is_dir: boolean;
+  readonly is_dir: boolean;
   /** 文件大小（字节） */
-  size: number;
+  readonly size: number;
   /** 最后修改时间戳（毫秒） */
-  modified_at: number | null;
+  readonly modified_at: number | null;
   /** 创建时间戳（毫秒） */
-  created_at: number | null;
+  readonly created_at: number | null;
   /** 是否只读 */
-  is_readonly: boolean;
+  readonly is_readonly: boolean;
   /** 是否隐藏文件 */
-  is_hidden: boolean;
+  readonly is_hidden: boolean;
   /** 文件扩展名（不含点号），目录为 null */
-  extension: string | null;
+  readonly extension: string | null;
 }
 
 /**
@@ -27,9 +27,9 @@ export interface FileEntry {
  */
 export interface FileExplorerError {
   /** 错误类型标识 */
-  type: string;
+  readonly type: string;
   /** 错误消息 */
-  message: string;
+  readonly message: string;
 }
 
 /**
@@ -37,20 +37,20 @@ export interface FileExplorerError {
  */
 export interface TreeNodeState {
   /** 子节点列表 */
-  children: FileEntry[];
+  readonly children: readonly FileEntry[];
   /** 是否已加载完成 */
-  isLoaded: boolean;
+  readonly isLoaded: boolean;
   /** 是否正在加载中 */
-  isLoading: boolean;
+  readonly isLoading: boolean;
   /** 加载错误信息 */
-  error?: string;
+  readonly error?: string;
 }
 
 /** 预览类型枚举 */
 export type PreviewType = 'text' | 'markdown' | 'image' | 'pdf' | 'unsupported';
 
 /** 图片 MIME 类型映射表 */
-export const IMAGE_MIME_TYPES: Record<string, string> = {
+export const IMAGE_MIME_TYPES = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -59,4 +59,7 @@ export const IMAGE_MIME_TYPES: Record<string, string> = {
   webp: 'image/webp',
   bmp: 'image/bmp',
   ico: 'image/x-icon',
-};
+} as const satisfies Record<string, string>;
+
+/** 图片扩展名类型 */
+export type ImageExtension = keyof typeof IMAGE_MIME_TYPES;

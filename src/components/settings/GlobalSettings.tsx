@@ -9,6 +9,14 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 
+/** Type guard for Theme values */
+const isValidTheme = (value: string): value is Theme =>
+  value === 'light' || value === 'dark' || value === 'system';
+
+/** Type guard for Language values */
+const isValidLanguage = (value: string): value is Language =>
+  value === 'zh-CN' || value === 'en-US';
+
 export function GlobalSettings() {
   const {
     theme,
@@ -21,6 +29,20 @@ export function GlobalSettings() {
     setPersonalIntro,
   } = useSettingsStore();
 
+  /** Handle theme change with type guard */
+  const handleThemeChange = (v: string | null) => {
+    if (v !== null && isValidTheme(v)) {
+      setTheme(v);
+    }
+  };
+
+  /** Handle language change with type guard */
+  const handleLanguageChange = (v: string | null) => {
+    if (v !== null && isValidLanguage(v)) {
+      setLanguage(v);
+    }
+  };
+
   return (
     <div className="space-y-6 py-4">
       {/* 主题设置 */}
@@ -29,7 +51,7 @@ export function GlobalSettings() {
           <label className="text-sm font-medium">主题</label>
           <p className="text-xs text-muted-foreground">选择应用的显示主题</p>
         </div>
-        <Select value={theme} onValueChange={(v) => setTheme(v as Theme)}>
+        <Select value={theme} onValueChange={handleThemeChange}>
           <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>
@@ -47,7 +69,7 @@ export function GlobalSettings() {
           <label className="text-sm font-medium">语言</label>
           <p className="text-xs text-muted-foreground">选择应用的语言</p>
         </div>
-        <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
+        <Select value={language} onValueChange={handleLanguageChange}>
           <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>

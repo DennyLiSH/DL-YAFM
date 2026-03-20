@@ -8,7 +8,7 @@ import { getErrorMessage } from '@/lib/error';
 
 export function BookmarkList() {
   const { bookmarks, removeBookmark } = useBookmarkStore();
-  const { setBrowsePath, rootPath } = useFileTreeStore();
+  const { setBrowsePath } = useFileTreeStore();
 
   const handleBookmarkClick = async (path: string) => {
     try {
