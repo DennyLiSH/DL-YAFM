@@ -554,7 +554,7 @@ export function FileBrowser() {
 
       {/* Breadcrumb */}
       {currentBrowsePath && (
-        <div className="px-4 py-1.5 border-b bg-muted/30 overflow-x-auto">
+        <div className="px-4 min-h-[36px] flex items-center border-b bg-muted/30 overflow-x-auto">
           <div className="flex items-center gap-1 text-xs whitespace-nowrap">
             {pathSegments.map((segment, index) => (
               <span key={segment.path} className="flex items-center">
