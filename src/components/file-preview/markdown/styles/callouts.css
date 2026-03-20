@@ -1,0 +1,94 @@
+/* Obsidian-style Callouts */
+
+.callout {
+  --callout-color: oklch(0.6 0.15 250);
+  --callout-bg: oklch(from var(--callout-color) l c h / 0.1);
+
+  border-left: 4px solid var(--callout-color);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 0.25rem;
+  background-color: var(--callout-bg);
+}
+
+.dark .callout {
+  --callout-bg: oklch(from var(--callout-color) l c h / 0.15);
+}
+
+/* Callout types */
+.callout[data-callout='note'],
+.callout[data-callout=''] {
+  --callout-color: oklch(0.6 0.15 250);
+}
+
+.callout[data-callout='warning'] {
+  --callout-color: oklch(0.75 0.18 70);
+}
+
+.callout[data-callout='tip'] {
+  --callout-color: oklch(0.65 0.18 150);
+}
+
+.callout[data-callout='danger'],
+.callout[data-callout='error'] {
+  --callout-color: oklch(0.6 0.22 25);
+}
+
+.callout[data-callout='info'] {
+  --callout-color: oklch(0.6 0.15 200);
+}
+
+.callout[data-callout='success'] {
+  --callout-color: oklch(0.6 0.18 145);
+}
+
+.callout[data-callout='question'],
+.callout[data-callout='faq'] {
+  --callout-color: oklch(0.65 0.15 280);
+}
+
+.callout[data-callout='example'],
+.callout[data-callout='quote'] {
+  --callout-color: oklch(0.55 0.1 30);
+}
+
+.callout[data-callout='bug'] {
+  --callout-color: oklch(0.55 0.2 15);
+}
+
+/* Callout title */
+.callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--callout-color);
+}
+
+.callout-title .callout-icon {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+/* Callout content */
+.callout-content > *:first-child {
+  margin-top: 0;
+}
+
+.callout-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Collapsible callouts (optional) */
+.callout.is-collapsible {
+  cursor: pointer;
+}
+
+.callout.is-collapsed .callout-content {
+  display: none;
+}
+
+.callout.is-collapsed .callout-fold {
+  transform: rotate(-90deg);
+}
