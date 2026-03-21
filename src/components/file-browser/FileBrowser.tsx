@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { useEditorStore } from '@/stores/editorStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { FileBrowserContextMenu } from './FileBrowserContextMenu';
 import {
   NewFolderDialog,
@@ -20,8 +21,9 @@ import {
   ContextMenuSubContent,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu';
-import { FolderPlus, ClipboardPaste, FilePlus, Code2 } from 'lucide-react';
+import { FolderPlus, ClipboardPaste, FilePlus, Code2, Search, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { formatDate, formatFileSize, getFileIcon } from '@/lib/format';
 import { getErrorMessage } from '@/lib/error';
 import { cn } from '@/lib/utils';
@@ -53,6 +55,8 @@ export function FileBrowser() {
     selectedNodes,
     clipboardEntries,
     browseViewMode,
+    searchResults,
+    isSearching,
     setBrowsePath,
     goBack,
     goToParent,
@@ -66,7 +70,10 @@ export function FileBrowser() {
     cutSelectedToClipboard,
     pasteFromClipboard,
     setBrowseViewMode,
+    search,
   } = useFileTreeStore();
+
+  const { searchDebounceMs } = useSettingsStore();
 
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -78,8 +85,49 @@ export function FileBrowser() {
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
+  // Search states
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Editor state from global store (singleton cache)
   const availableEditors = useEditorStore((state) => state.editors);
+
+  // 防抖搜索
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+
+    // 清除之前的定时器
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // 如果搜索词为空，不执行搜索
+    if (!value.trim()) {
+      return;
+    }
+
+    // 使用设置的防抖时间
+    searchTimeoutRef.current = setTimeout(() => {
+      search(value);
+    }, searchDebounceMs);
+  }, [search, searchDebounceMs]);
+
+  // 清空搜索
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+  }, []);
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // 追踪最后选中的索引用于 Shift 范围选择
   const lastSelectedIndexRef = useRef<number | null>(null);
@@ -100,9 +148,20 @@ export function FileBrowser() {
   // 是否有多个选中项
   const hasMultiSelection = selectedNodes.size > 1;
 
+  // 显示的条目：搜索结果或当前目录
+  const displayEntries = useMemo(() => {
+    if (searchQuery.trim() && searchResults.length > 0) {
+      return searchResults;
+    }
+    if (searchQuery.trim() && !isSearching) {
+      return []; // 无结果
+    }
+    return browseEntries;
+  }, [searchQuery, searchResults, isSearching, browseEntries]);
+
   // Sort entries
   const sortedEntries = useMemo(() => {
-    const sorted = [...browseEntries];
+    const sorted = [...displayEntries];
     sorted.sort((a, b) => {
       // Always put folders first
       if (a.is_dir !== b.is_dir) {
@@ -130,7 +189,7 @@ export function FileBrowser() {
       return sortDirection === 'asc' ? comparison : -comparison;
     });
     return sorted;
-  }, [browseEntries, sortField, sortDirection]);
+  }, [displayEntries, sortField, sortDirection]);
 
   // 获取当前选中项的索引
   const getCurrentSelectedIndex = useCallback((): number => {
@@ -273,10 +332,14 @@ export function FileBrowser() {
         }
       }
 
-      // Escape: 清除选择
+      // Escape: 清除搜索或选择
       if (e.key === 'Escape') {
-        clearSelection();
-        lastSelectedIndexRef.current = null;
+        if (searchQuery) {
+          handleClearSearch();
+        } else {
+          clearSelection();
+          lastSelectedIndexRef.current = null;
+        }
       }
 
       // Ctrl/Cmd + C: 复制选中项
@@ -300,7 +363,7 @@ export function FileBrowser() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries, getCurrentSelectedIndex, selectSingleItem, browseViewMode]);
+  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries, getCurrentSelectedIndex, selectSingleItem, browseViewMode, searchQuery, handleClearSearch]);
 
   // 切换目录时清除选择
   useEffect(() => {
@@ -530,6 +593,30 @@ export function FileBrowser() {
           >
             <RefreshCw className={`w-4 h-4 ${isLoadingBrowse ? 'animate-spin' : ''}`} />
           </Button>
+          {/* Search Box */}
+          <div className="relative w-40">
+            {isSearching ? (
+              <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground animate-spin" />
+            ) : (
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+            )}
+            <Input
+              placeholder="搜索当前目录..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-6 pr-6 h-7 text-xs"
+            />
+            {searchQuery && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6"
+                onClick={handleClearSearch}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
           {/* 视图切换 */}
           <div className="flex border-l pl-1 ml-1">
             <Button

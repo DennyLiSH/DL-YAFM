@@ -21,6 +21,7 @@ interface SettingsState {
   folderDescriptions: Record<string, string>;
   fontSans: string;
   fontMono: string;
+  searchDebounceMs: number;
   isLoading: boolean;
   isInitialized: boolean;
 
@@ -34,6 +35,7 @@ interface SettingsState {
   getFolderDescription: (path: string) => string;
   setFontSans: (font: string) => Promise<void>;
   setFontMono: (font: string) => Promise<void>;
+  setSearchDebounceMs: (ms: number) => Promise<void>;
 }
 
 // Helper to convert backend format to frontend format
@@ -46,6 +48,7 @@ function mapSettingsFromBackend(settings: Settings): Partial<SettingsState> {
     folderDescriptions: settings.folder_descriptions,
     fontSans: settings.font_sans || '',
     fontMono: settings.font_mono || '',
+    searchDebounceMs: settings.search_debounce_ms || 500,
   };
 }
 
@@ -59,12 +62,14 @@ function mapSettingsToBackend(state: SettingsState): Settings {
     folder_descriptions: state.folderDescriptions,
     font_sans: state.fontSans || undefined,
     font_mono: state.fontMono || undefined,
+    search_debounce_ms: state.searchDebounceMs || undefined,
   };
 }
 
 // Default fonts
 const DEFAULT_SANS_FONT = 'LXGW WenKai';
 const DEFAULT_MONO_FONT = 'JetBrains Mono';
+const DEFAULT_SEARCH_DEBOUNCE_MS = 500;
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
   // Default values
@@ -75,6 +80,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   folderDescriptions: {},
   fontSans: DEFAULT_SANS_FONT,
   fontMono: DEFAULT_MONO_FONT,
+  searchDebounceMs: DEFAULT_SEARCH_DEBOUNCE_MS,
   isLoading: true,
   isInitialized: false,
 
@@ -154,6 +160,13 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     await configService.updateSettings(newSettings);
     set({ fontMono });
     applyFontToCSS(state.fontSans, fontMono);
+  },
+
+  setSearchDebounceMs: async (searchDebounceMs) => {
+    const state = get();
+    const newSettings = mapSettingsToBackend({ ...state, searchDebounceMs });
+    await configService.updateSettings(newSettings);
+    set({ searchDebounceMs });
   },
 }));
 

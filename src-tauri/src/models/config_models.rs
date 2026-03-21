@@ -30,6 +30,8 @@ pub struct Settings {
     pub font_sans: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font_mono: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_debounce_ms: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

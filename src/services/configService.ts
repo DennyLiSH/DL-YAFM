@@ -20,6 +20,7 @@ export interface Settings {
   folder_descriptions: Record<string, string>;
   font_sans?: string;
   font_mono?: string;
+  search_debounce_ms?: number;
 }
 
 /** 书签条目 */

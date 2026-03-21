@@ -97,7 +97,7 @@ interface FileTreeState {
   loadNodeChildren: (path: string) => Promise<void>;
   loadRootEntries: () => Promise<void>;
   setSearchQuery: (query: string) => void;
-  search: (query: string) => Promise<void>;
+  search: (query: string, directory?: string) => Promise<void>;
   refreshNode: (path: string) => Promise<void>;
   clearError: () => void;
 
@@ -388,16 +388,17 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  search: async (query) => {
-    const { rootPath } = get();
-    if (!rootPath || !query.trim()) {
+  search: async (query, directory) => {
+    const { rootPath, currentBrowsePath } = get();
+    const searchDir = directory || currentBrowsePath || rootPath;
+    if (!searchDir || !query.trim()) {
       set({ searchResults: [], isSearching: false });
       return;
     }
 
     set({ isSearching: true, searchQuery: query });
     try {
-      const results = await fileService.searchFiles(rootPath, query);
+      const results = await fileService.searchFiles(searchDir, query);
       set({ searchResults: results, isSearching: false });
     } catch (err) {
       set({ searchResults: [], isSearching: false, error: getErrorMessage(err) });

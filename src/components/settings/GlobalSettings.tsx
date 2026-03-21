@@ -35,6 +35,13 @@ const MONO_FONT_OPTIONS = [
   { value: 'ui-monospace', label: '系统默认' },
 ];
 
+const SEARCH_DEBOUNCE_OPTIONS = [
+  { value: 200, label: '200ms (快速)' },
+  { value: 300, label: '300ms' },
+  { value: 500, label: '500ms (默认)' },
+  { value: 800, label: '800ms (慢速)' },
+];
+
 export function GlobalSettings() {
   const {
     theme,
@@ -43,12 +50,14 @@ export function GlobalSettings() {
     personalIntro,
     fontSans,
     fontMono,
+    searchDebounceMs,
     setTheme,
     setLanguage,
     setShowHiddenFiles,
     setPersonalIntro,
     setFontSans,
     setFontMono,
+    setSearchDebounceMs,
   } = useSettingsStore();
 
   /** Handle theme change with type guard */
@@ -167,6 +176,29 @@ export function GlobalSettings() {
           checked={showHiddenFiles}
           onCheckedChange={setShowHiddenFiles}
         />
+      </div>
+
+      {/* 搜索防抖时间 */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <label className="text-sm font-medium">搜索延迟</label>
+          <p className="text-xs text-muted-foreground">输入后等待多久开始搜索</p>
+        </div>
+        <Select
+          value={String(searchDebounceMs)}
+          onValueChange={(v) => setSearchDebounceMs(Number(v))}
+        >
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SEARCH_DEBOUNCE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={String(opt.value)}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* 个人介绍 */}

@@ -1,11 +1,10 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { fileService } from '@/services/fileService';
 import { TreeNode } from './TreeNode';
 import type { FileEntry } from '@/types/file';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Input } from '@/components/ui/input';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -14,7 +13,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { NewFolderDialog, NewFileDialog } from '@/components/dialogs';
-import { FolderOpen, RefreshCw, Search, X, Loader2, FolderPlus, FilePlus, ClipboardPaste } from 'lucide-react';
+import { FolderOpen, RefreshCw, FolderPlus, FilePlus, ClipboardPaste } from 'lucide-react';
 import { toast } from 'sonner';
 
 // 列配置类型
@@ -32,18 +31,14 @@ export function FileTree() {
   const {
     rootPath,
     isSystemRoot,
-    rootEntries,
     isLoading,
     error,
-    searchResults,
-    isSearching,
     clipboardEntries,
     selectedNodes,
     setRootPath,
     loadRootEntries,
     refreshNode,
     clearError,
-    search,
     pasteFromClipboard,
     selectAll,
     clearSelection,
@@ -52,9 +47,6 @@ export function FileTree() {
     getSelectedEntries,
   } = useFileTreeStore();
 
-  // 搜索状态
-  const [searchQuery, setSearchQuery] = useState('');
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 根目录右键菜单对话框状态
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [showNewFileDialog, setShowNewFileDialog] = useState(false);
@@ -133,54 +125,6 @@ export function FileTree() {
     }
   }, [selectedNodes, rootPath, refreshNode, loadRootEntries]);
 
-  // 防抖搜索
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchQuery(value);
-
-    // 清除之前的定时器
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    // 如果搜索词为空，不执行搜索
-    if (!value.trim()) {
-      return;
-    }
-
-    // 300ms 防抖
-    searchTimeoutRef.current = setTimeout(() => {
-      search(value);
-    }, 300);
-  }, [search]);
-
-  // 清空搜索
-  const handleClearSearch = useCallback(() => {
-    setSearchQuery('');
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-  }, []);
-
-  // 清理定时器
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // 显示的条目：搜索结果或根目录条目
-  const displayEntries = useMemo(() => {
-    if (searchQuery.trim() && searchResults.length > 0) {
-      return searchResults;
-    }
-    if (searchQuery.trim() && !isSearching) {
-      return []; // 搜索完成但无结果
-    }
-    return rootEntries;
-  }, [searchQuery, searchResults, isSearching, rootEntries]);
-
   // 虚拟根节点：代表 rootPath 本身作为第一个可操作节点
   const rootNode: FileEntry | null = useMemo(() => {
     // System root mode (My Computer on Windows)
@@ -229,30 +173,6 @@ export function FileTree() {
             <Button variant="ghost" size="icon" onClick={handleRefresh} title="刷新">
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </Button>
-          </div>
-          {/* Search Box */}
-          <div className="relative w-40">
-            {isSearching ? (
-              <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground animate-spin" />
-            ) : (
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-            )}
-            <Input
-              placeholder="搜索..."
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-6 pr-6 h-7 text-xs"
-            />
-            {searchQuery && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6"
-                onClick={handleClearSearch}
-              >
-                <X className="w-3 h-3" />
-              </Button>
-            )}
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48">
@@ -334,27 +254,7 @@ export function FileTree() {
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             加载中...
           </div>
-        ) : isSearching && displayEntries.length === 0 ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            搜索中...
-          </div>
-        ) : searchQuery && displayEntries.length === 0 ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            未找到匹配的文件
-          </div>
-        ) : searchQuery ? (
-          // 搜索结果模式：显示为平铺列表（包含文件和文件夹）
-          <div className="py-1">
-            <div className="px-2 py-1 text-xs text-muted-foreground border-b mb-1">
-              搜索结果 ({displayEntries.length} 项)
-            </div>
-            {displayEntries.map((entry) => (
-              <TreeNode key={entry.path} entry={entry} depth={0} columns={DEFAULT_COLUMNS} />
-            ))}
-          </div>
         ) : rootNode ? (
-          // 正常模式：显示虚拟根节点（只显示文件夹）
           <div className="py-1">
             <TreeNode key={rootNode.path} entry={rootNode} depth={0} columns={DEFAULT_COLUMNS} isVirtualRoot />
           </div>
