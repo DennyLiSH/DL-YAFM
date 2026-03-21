@@ -671,7 +671,7 @@ export function FileBrowser() {
                         ref={(el) => registerItemRef(entry.path, el)}
                         data-file-item
                         className={cn(
-                          'flex flex-col items-center justify-center p-3 rounded-lg cursor-pointer transition-colors',
+                          'flex flex-col items-center justify-center p-3 rounded-lg cursor-pointer transition-colors min-h-[110px]',
                           'hover:bg-accent',
                           isSelected && 'bg-primary/20 ring-1 ring-primary/50',
                           isSelected && hasMultiSelection && 'bg-primary/30'
@@ -680,7 +680,7 @@ export function FileBrowser() {
                         onDoubleClick={() => handleDoubleClick(entry)}
                       >
                         <span className="text-3xl mb-2">{getFileIcon(entry)}</span>
-                        <span className="text-xs text-center truncate w-full" title={entry.name}>
+                        <span className="text-xs text-center line-clamp-3 w-full" title={entry.name}>
                           {entry.name}
                         </span>
                       </div>
