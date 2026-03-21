@@ -54,6 +54,15 @@ export function FileTree() {
   // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+
+      // 忽略输入框中的键盘事件
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+      // 检查是否在 FileTree 组件内
+      const isInFileTree = target.closest('[data-file-tree]');
+      if (!isInFileTree) return;
+
       // Ctrl/Cmd + A: 全选
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault();
@@ -158,7 +167,7 @@ export function FileTree() {
 
   // We always have a root now (system root or selected folder)
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-file-tree>
       {/* Header with Search and Context Menu */}
       <ContextMenu>
         <ContextMenuTrigger className="flex items-center gap-2 px-3 py-2 border-b cursor-context-menu w-full">

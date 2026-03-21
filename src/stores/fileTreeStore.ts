@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { fileService, type FileChangeEvent } from '@/services/fileService';
-import { useCopyProgressStore } from '@/stores/copyProgressStore';
 import type { FileEntry, TreeNodeState, PreviewType } from '@/types/file';
 import { getErrorMessage } from '@/lib/error';
 
@@ -127,6 +126,14 @@ interface FileTreeState {
   copySelectedToClipboard: (entries: FileEntry[]) => void;
   cutSelectedToClipboard: (entries: FileEntry[]) => void;
   clearClipboard: () => void;
+  checkPasteConflicts: (targetDir: string) => Promise<{ conflicts: ClipboardEntry[]; nonConflicts: ClipboardEntry[] }>;
+  executePaste: (targetDir: string, options?: {
+    skipConflicts?: boolean;
+    overwriteConflicts?: boolean;
+    renameConflicts?: boolean;
+    conflictEntries?: ClipboardEntry[];
+    nonConflictEntries?: ClipboardEntry[];
+  }) => Promise<number>;
   pasteFromClipboard: (targetDir: string) => Promise<void>;
 
   // Watch actions
@@ -662,78 +669,175 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
   clearClipboard: () => set({ clipboardEntries: [] }),
 
+  // 检查粘贴冲突，返回冲突列表
+  checkPasteConflicts: async (targetDir: string): Promise<{ conflicts: ClipboardEntry[]; nonConflicts: ClipboardEntry[] }> => {
+    const { clipboardEntries } = get();
+    const conflicts: ClipboardEntry[] = [];
+    const nonConflicts: ClipboardEntry[] = [];
+
+    for (const entry of clipboardEntries) {
+      const destPath = `${targetDir}/${entry.sourceName}`;
+      const exists = await fileService.checkPathExists(destPath);
+      if (exists) {
+        conflicts.push(entry);
+      } else {
+        nonConflicts.push(entry);
+      }
+    }
+
+    return { conflicts, nonConflicts };
+  },
+
+  // 执行粘贴操作（可选择跳过或覆盖冲突文件）
+  executePaste: async (
+    targetDir: string,
+    options: {
+      skipConflicts?: boolean;
+      overwriteConflicts?: boolean;
+      renameConflicts?: boolean;
+      conflictEntries?: ClipboardEntry[];
+      nonConflictEntries?: ClipboardEntry[];
+    } = {}
+  ): Promise<number> => {
+    const { clipboardEntries, rootPath, currentBrowsePath } = get();
+    if (clipboardEntries.length === 0) return 0;
+
+    const { skipConflicts = false, overwriteConflicts = false, renameConflicts = false, conflictEntries = [], nonConflictEntries = [] } = options;
+    const isCut = clipboardEntries[0]?.isCut ?? false;
+    const successPaths: string[] = [];
+
+    // 处理无冲突的文件
+    for (const entry of nonConflictEntries) {
+      const destPath = `${targetDir}/${entry.sourceName}`;
+      try {
+        await fileService.copyEntry(entry.sourcePath, destPath);
+        successPaths.push(entry.sourcePath);
+      } catch (err) {
+        console.error('Failed to copy:', entry.sourcePath, err);
+      }
+    }
+
+    // 处理冲突的文件
+    if (conflictEntries.length > 0) {
+      if (skipConflicts) {
+        // 跳过冲突文件，不做任何操作
+      } else if (overwriteConflicts) {
+        for (const entry of conflictEntries) {
+          const destPath = `${targetDir}/${entry.sourceName}`;
+          try {
+            await fileService.deleteEntry(destPath, entry.isDir);
+            await fileService.copyEntry(entry.sourcePath, destPath);
+            successPaths.push(entry.sourcePath);
+          } catch (err) {
+            console.error('Failed to overwrite:', entry.sourcePath, err);
+          }
+        }
+      } else if (renameConflicts) {
+        for (const entry of conflictEntries) {
+          const ext = entry.sourceName.includes('.') ? '.' + entry.sourceName.split('.').pop() : '';
+          const baseName = entry.sourceName.replace(ext, '');
+          const now = new Date();
+          const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+          const newFileName = `${baseName}_New_${timestamp}${ext}`;
+          const destPath = `${targetDir}/${newFileName}`;
+          try {
+            await fileService.copyEntry(entry.sourcePath, destPath);
+            successPaths.push(entry.sourcePath);
+          } catch (err) {
+            console.error('Failed to copy with new name:', entry.sourcePath, err);
+          }
+        }
+      }
+    }
+
+    // 刷新目标目录
+    if (successPaths.length > 0) {
+      if (targetDir === currentBrowsePath) {
+        get().refreshBrowse();
+      }
+      get().refreshNode(targetDir);
+    }
+
+    // 如果是剪切操作，删除源文件
+    if (isCut && successPaths.length > 0) {
+      for (const sourcePath of successPaths) {
+        try {
+          await fileService.deleteEntry(sourcePath, true);
+          // 刷新源目录
+          const lastSepIndex = sourcePath.lastIndexOf(sourcePath.includes('\\') ? '\\' : '/');
+          const sourceParent = lastSepIndex > 0 ? sourcePath.substring(0, lastSepIndex) : '';
+          if (sourceParent === rootPath) {
+            get().loadRootEntries();
+          } else if (sourceParent) {
+            get().refreshNode(sourceParent);
+          }
+        } catch (err) {
+          console.error('Failed to delete source after cut:', err);
+        }
+      }
+      // 清空剪贴板
+      set({ clipboardEntries: [] });
+    }
+
+    return successPaths.length;
+  },
+
+  // 简单粘贴（无冲突检测，直接覆盖）
   pasteFromClipboard: async (targetDir) => {
-    const { clipboardEntries, rootPath } = get();
+    const { clipboardEntries, rootPath, currentBrowsePath } = get();
     if (clipboardEntries.length === 0) return;
 
     const isCut = clipboardEntries[0]?.isCut ?? false;
-    const sourcePaths: string[] = [];
+    let successCount = 0;
 
     // 逐个处理剪贴板条目
     for (const clipboardEntry of clipboardEntries) {
       const destPath = `${targetDir}/${clipboardEntry.sourceName}`;
-      const taskId = `copy-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      const sourcePath = clipboardEntry.sourcePath;
-      sourcePaths.push(sourcePath);
-
-      // Subscribe to progress events
-      const unlisten = await fileService.onCopyProgress((progress) => {
-        if (progress.task_id === taskId) {
-          const { addTask, updateTask } = useCopyProgressStore.getState();
-          if (progress.is_complete) {
-            if (progress.error) {
-              // Error occurred
-              updateTask(taskId, progress);
-            } else {
-              // Success - remove task after a delay
-              setTimeout(() => {
-                useCopyProgressStore.getState().removeTask(taskId);
-              }, 2000);
-            }
-          } else {
-            // Update progress
-            const task = useCopyProgressStore.getState().tasks.get(taskId);
-            if (task) {
-              updateTask(taskId, progress);
-            } else {
-              addTask(progress);
-            }
-          }
-        }
-      });
 
       try {
-        await fileService.copyEntryAsync(taskId, sourcePath, destPath);
-        // Refresh the target directory after copy starts (will refresh again on complete)
-        get().refreshNode(targetDir);
+        // 如果目标存在，先删除
+        const destExists = await fileService.checkPathExists(destPath);
+        if (destExists) {
+          await fileService.deleteEntry(destPath, clipboardEntry.isDir);
+        }
+        await fileService.copyEntry(clipboardEntry.sourcePath, destPath);
+        successCount++;
       } catch (err) {
-        console.error('Failed to copy:', sourcePath, err);
-      } finally {
-        // Unsubscribe from progress events
-        unlisten();
+        console.error('Failed to copy:', clipboardEntry.sourcePath, err);
       }
     }
 
-    // 如果是剪切操作，复制完成后删除源文件
-    if (isCut) {
-      setTimeout(async () => {
-        for (const sourcePath of sourcePaths) {
-          try {
-            await fileService.deleteEntry(sourcePath, true);
-            // 刷新源目录
-            const sourceParent = sourcePath.substring(0, sourcePath.lastIndexOf(/[\\/]/.test(sourcePath) ? (sourcePath.includes('\\') ? '\\' : '/') : '/'));
-            if (sourceParent === rootPath) {
-              get().loadRootEntries();
-            } else if (sourceParent) {
-              get().refreshNode(sourceParent);
-            }
-          } catch (err) {
-            console.error('Failed to delete source after cut:', err);
+    // 刷新目标目录
+    if (successCount > 0) {
+      if (targetDir === currentBrowsePath) {
+        get().refreshBrowse();
+      }
+      get().refreshNode(targetDir);
+    }
+
+    // 如果是剪切操作，删除源文件
+    if (isCut && successCount > 0) {
+      for (const clipboardEntry of clipboardEntries) {
+        try {
+          await fileService.deleteEntry(clipboardEntry.sourcePath, true);
+          // 刷新源目录
+          const sourceParent = clipboardEntry.sourcePath.substring(
+            0,
+            clipboardEntry.sourcePath.lastIndexOf(
+              clipboardEntry.sourcePath.includes('\\') ? '\\' : '/'
+            )
+          );
+          if (sourceParent === rootPath) {
+            get().loadRootEntries();
+          } else if (sourceParent) {
+            get().refreshNode(sourceParent);
           }
+        } catch (err) {
+          console.error('Failed to delete source after cut:', err);
         }
-        // 清空剪贴板
-        set({ clipboardEntries: [] });
-      }, 1000);
+      }
+      // 清空剪贴板
+      set({ clipboardEntries: [] });
     }
   },
 

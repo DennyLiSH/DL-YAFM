@@ -65,11 +65,8 @@ export function FileBrowser() {
     loadFilePreview,
     toggleNodeSelection,
     clearSelection,
-    selectAll,
-    getSelectedEntries,
     copySelectedToClipboard,
     cutSelectedToClipboard,
-    pasteFromClipboard,
     setBrowseViewMode,
     search,
     cancelSearch,
@@ -87,7 +84,11 @@ export function FileBrowser() {
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
-  const [conflictInfo, setConflictInfo] = useState<{ sourcePath: string; destPath: string; fileName: string } | null>(null);
+  const [conflictInfo, setConflictInfo] = useState<{
+    targetDir: string;
+    conflictCount: number;
+    nonConflictCount: number;
+  } | null>(null);
 
   // Search states
   const [searchQuery, setSearchQuery] = useState('');
@@ -338,7 +339,9 @@ export function FileBrowser() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault();
         if (currentBrowsePath && sortedEntries.length > 0) {
-          selectAll(currentBrowsePath);
+          // 直接使用 browseEntries (sortedEntries) 而不是 nodeCache
+          const newSelection = new Set(sortedEntries.map(e => e.path));
+          useFileTreeStore.setState({ selectedNodes: newSelection });
           lastSelectedIndexRef.current = sortedEntries.length - 1;
         }
       }
@@ -387,7 +390,7 @@ export function FileBrowser() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, refreshBrowse, getCurrentSelectedIndex, selectSingleItem, browseViewMode, searchQuery, handleClearSearch, isSearching, cancelSearch, showDeleteDialog, showRenameDialog, showNewFolderDialog, showNewFileDialog, showOverwriteDialog]);
+  }, [currentBrowsePath, sortedEntries, selectedNodes, clearSelection, refreshBrowse, getCurrentSelectedIndex, selectSingleItem, browseViewMode, searchQuery, handleClearSearch, isSearching, cancelSearch, showDeleteDialog, showRenameDialog, showNewFolderDialog, showNewFileDialog, showOverwriteDialog]);
 
   // 切换目录时清除选择
   useEffect(() => {
@@ -478,18 +481,51 @@ export function FileBrowser() {
     setSelectedEntry(null);
   };
 
-  // 从系统剪贴板粘贴
+  // 从剪贴板粘贴（优先使用应用内部剪贴板，否则使用系统剪贴板）
   const handlePasteFromClipboard = useCallback(async () => {
     if (!currentBrowsePath) return;
 
+    // 从 store 获取最新的剪贴板内容
+    const store = useFileTreeStore.getState();
+    const entries = store.clipboardEntries;
+
+    // 优先使用应用内部剪贴板（支持多选）
+    if (entries.length > 0) {
+      // 检查冲突
+      const { conflicts, nonConflicts } = await store.checkPasteConflicts(currentBrowsePath);
+
+      if (conflicts.length > 0) {
+        // 有冲突，显示对话框让用户选择
+        setConflictInfo({
+          targetDir: currentBrowsePath,
+          conflictCount: conflicts.length,
+          nonConflictCount: nonConflicts.length,
+        });
+        setShowOverwriteDialog(true);
+      } else {
+        // 无冲突，直接粘贴
+        try {
+          const count = await store.executePaste(currentBrowsePath, {
+            nonConflictEntries: nonConflicts,
+            conflictEntries: [],
+          });
+          toast.success(`已粘贴 ${count} 个项目`);
+        } catch (err) {
+          toast.error(`粘贴失败: ${getErrorMessage(err)}`);
+        }
+      }
+      return;
+    }
+
+    // 否则尝试从系统剪贴板读取
     try {
       const paths = await fileService.readPathsFromClipboard();
       if (paths.length === 0) {
-        toast.info('系统剪贴板中没有文件路径');
+        toast.info('剪贴板中没有文件');
         return;
       }
 
-      // 处理第一个文件（如果有多个文件，逐个处理）
+      // 处理第一个文件
       const sourcePath = paths[0];
       if (!sourcePath) {
         toast.error('无效的文件路径');
@@ -509,7 +545,11 @@ export function FileBrowser() {
       const destExists = await fileService.checkPathExists(destPath);
       if (destExists) {
         // 显示冲突对话框
-        setConflictInfo({ sourcePath, destPath, fileName });
+        setConflictInfo({
+          targetDir: currentBrowsePath,
+          conflictCount: 1,
+          nonConflictCount: 0,
+        });
         setShowOverwriteDialog(true);
       } else {
         // 直接复制
@@ -527,10 +567,14 @@ export function FileBrowser() {
     if (!conflictInfo) return;
 
     try {
-      // 先删除目标文件，再复制
-      await fileService.deleteEntry(conflictInfo.destPath, true);
-      await fileService.copyEntry(conflictInfo.sourcePath, conflictInfo.destPath);
-      toast.success(`已覆盖 ${conflictInfo.fileName}`);
+      const store = useFileTreeStore.getState();
+      const { conflicts, nonConflicts } = await store.checkPasteConflicts(conflictInfo.targetDir);
+      const count = await store.executePaste(conflictInfo.targetDir, {
+        overwriteConflicts: true,
+        conflictEntries: conflicts,
+        nonConflictEntries: nonConflicts,
+      });
+      toast.success(`已粘贴 ${count} 个项目`);
       refreshBrowse();
     } catch (err) {
       toast.error(`覆盖失败: ${getErrorMessage(err)}`);
@@ -544,23 +588,14 @@ export function FileBrowser() {
     if (!conflictInfo) return;
 
     try {
-      // 生成新文件名
-      const { sourcePath, destPath, fileName } = conflictInfo;
-      const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
-      const baseName = fileName.replace(ext, '');
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-      const newFileName = `${baseName}_New_${timestamp}${ext}`;
-      const newDestPath = destPath.replace(fileName, newFileName);
-
-      await fileService.copyEntry(sourcePath, newDestPath);
-      toast.success(`已粘贴为新文件: ${newFileName}`);
+      const store = useFileTreeStore.getState();
+      const { conflicts, nonConflicts } = await store.checkPasteConflicts(conflictInfo.targetDir);
+      const count = await store.executePaste(conflictInfo.targetDir, {
+        renameConflicts: true,
+        conflictEntries: conflicts,
+        nonConflictEntries: nonConflicts,
+      });
+      toast.success(`已粘贴 ${count} 个项目（重命名冲突文件)`);
       refreshBrowse();
     } catch (err) {
       toast.error(`重命名粘贴失败: ${getErrorMessage(err)}`);
@@ -572,7 +607,7 @@ export function FileBrowser() {
   // 复制处理
   const handleCopy = (entry: FileEntry) => {
     if (hasMultiSelection && selectedNodes.has(entry.path)) {
-      const entries = getSelectedEntries();
+      const entries = sortedEntries.filter(e => selectedNodes.has(e.path));
       copySelectedToClipboard(entries);
       toast.success(`已复制 ${entries.length} 个项目到剪贴板`);
     } else {
@@ -584,7 +619,7 @@ export function FileBrowser() {
   // 剪切处理
   const handleCut = (entry: FileEntry) => {
     if (hasMultiSelection && selectedNodes.has(entry.path)) {
-      const entries = getSelectedEntries();
+      const entries = sortedEntries.filter(e => selectedNodes.has(e.path));
       cutSelectedToClipboard(entries);
       toast.success(`已剪切 ${entries.length} 个项目到剪贴板`);
     } else {
@@ -595,10 +630,12 @@ export function FileBrowser() {
 
   // 粘贴处理
   const handlePaste = async (entry: FileEntry) => {
-    if (entry.is_dir && clipboardEntries.length > 0) {
+    if (!entry.is_dir) return;
+    const { clipboardEntries: entries, pasteFromClipboard: paste } = useFileTreeStore.getState();
+    if (entries.length > 0) {
       try {
-        await pasteFromClipboard(entry.path);
-        toast.success('粘贴完成');
+        await paste(entry.path);
+        toast.success(`已粘贴 ${entries.length} 个项目`);
         refreshBrowse();
       } catch (err) {
         toast.error(`粘贴失败: ${getErrorMessage(err)}`);
@@ -608,10 +645,12 @@ export function FileBrowser() {
 
   // 粘贴到当前文件夹
   const handlePasteToCurrentFolder = async () => {
-    if (currentBrowsePath && clipboardEntries.length > 0) {
+    if (!currentBrowsePath) return;
+    const { clipboardEntries: entries, pasteFromClipboard: paste } = useFileTreeStore.getState();
+    if (entries.length > 0) {
       try {
-        await pasteFromClipboard(currentBrowsePath);
-        toast.success('粘贴完成');
+        await paste(currentBrowsePath);
+        toast.success(`已粘贴 ${entries.length} 个项目`);
         refreshBrowse();
       } catch (err) {
         toast.error(`粘贴失败: ${getErrorMessage(err)}`);
@@ -720,11 +759,10 @@ export function FileBrowser() {
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={(e) => {
-                // Alt+A: 全选输入内容
-                if (e.altKey && e.key.toLowerCase() === 'a') {
-                  e.preventDefault();
+                // Ctrl+A: 全选输入内容（需要阻止冒泡避免触发 FileBrowser 全选）
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
                   e.stopPropagation();
-                  e.currentTarget.select();
+                  // 不需要 preventDefault，让浏览器默认的全选行为生效
                 }
                 // Escape: 取消搜索
                 if (e.key === 'Escape') {
@@ -1063,7 +1101,7 @@ export function FileBrowser() {
             open={showDeleteDialog}
             onOpenChange={setShowDeleteDialog}
             entries={hasMultiSelection && selectedNodes.has(selectedEntry.path)
-              ? getSelectedEntries()
+              ? sortedEntries.filter(e => selectedNodes.has(e.path))
               : [selectedEntry]}
             onSuccess={() => {
               handleRefreshAfterAction();
@@ -1081,7 +1119,8 @@ export function FileBrowser() {
             setShowOverwriteDialog(open);
             if (!open) setConflictInfo(null);
           }}
-          fileName={conflictInfo.fileName}
+          conflictCount={conflictInfo.conflictCount}
+          nonConflictCount={conflictInfo.nonConflictCount}
           onOverwrite={handleOverwriteConfirm}
           onRename={handleRenameAndPaste}
         />

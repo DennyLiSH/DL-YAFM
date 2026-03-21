@@ -607,7 +607,8 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
       <OverwriteConfirmDialog
         open={showOverwriteDialog}
         onOpenChange={setShowOverwriteDialog}
-        fileName={clipboardEntries.length > 1 ? `${clipboardEntries.length} 个项目` : (clipboardEntries[0]?.sourceName || '')}
+        conflictCount={clipboardEntries.length}
+        nonConflictCount={0}
         onOverwrite={handleReplace}
         onRename={handleRename}
       />
