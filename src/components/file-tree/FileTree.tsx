@@ -14,8 +14,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { NewFolderDialog, NewFileDialog } from '@/components/dialogs';
-import { FolderOpen, RefreshCw, Search, X, GripVertical, Loader2, FolderPlus, FilePlus, ClipboardPaste } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { FolderOpen, RefreshCw, Search, X, Loader2, FolderPlus, FilePlus, ClipboardPaste } from 'lucide-react';
 import { toast } from 'sonner';
 
 // 列配置类型
@@ -26,10 +25,8 @@ interface ColumnConfig {
   visible: boolean;
 }
 
-// 默认列配置
-const DEFAULT_COLUMNS: ColumnConfig[] = [
-  { id: 'modified', label: '修改日期', width: 'w-28', visible: true },
-];
+// 默认列配置（空数组 = 只显示名称列）
+const DEFAULT_COLUMNS: ColumnConfig[] = [];
 
 export function FileTree() {
   const {
@@ -58,11 +55,6 @@ export function FileTree() {
   // 搜索状态
   const [searchQuery, setSearchQuery] = useState('');
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 列顺序配置
-  const [columns, setColumns] = useState<ColumnConfig[]>(DEFAULT_COLUMNS);
-  // 拖拽状态
-  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
-  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   // 根目录右键菜单对话框状态
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [showNewFileDialog, setShowNewFileDialog] = useState(false);
@@ -220,95 +212,6 @@ export function FileTree() {
     };
   }, [rootPath, isSystemRoot]);
 
-  // 拖拽开始
-  const handleDragStart = (e: React.DragEvent, columnId: string) => {
-    e.stopPropagation();
-    setDraggedColumn(columnId);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', columnId);
-  };
-
-  // 拖拽经过
-  const handleDragOver = (e: React.DragEvent, columnId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    if (draggedColumn && draggedColumn !== columnId) {
-      setDragOverColumn(columnId);
-    }
-  };
-
-  // 拖拽离开
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.stopPropagation();
-    // 只有离开整个列头时才清除高亮
-    const relatedTarget = e.relatedTarget as HTMLElement;
-    if (!e.currentTarget.contains(relatedTarget)) {
-      setDragOverColumn(null);
-    }
-  };
-
-  // 拖拽结束
-  const handleDragEnd = () => {
-    setDraggedColumn(null);
-    setDragOverColumn(null);
-  };
-
-  // 拖拽放下
-  const handleDrop = (e: React.DragEvent, targetColumnId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!draggedColumn || draggedColumn === targetColumnId) {
-      setDraggedColumn(null);
-      setDragOverColumn(null);
-      return;
-    }
-
-    // 重新排列列顺序
-    setColumns((prev) => {
-      const newColumns = [...prev];
-      const draggedIndex = newColumns.findIndex((c) => c.id === draggedColumn);
-      const targetIndex = newColumns.findIndex((c) => c.id === targetColumnId);
-
-      if (draggedIndex !== -1 && targetIndex !== -1) {
-        const [removed] = newColumns.splice(draggedIndex, 1);
-        if (removed) {
-          newColumns.splice(targetIndex, 0, removed);
-        }
-      }
-
-      return newColumns;
-    });
-
-    setDraggedColumn(null);
-    setDragOverColumn(null);
-  };
-
-  // 渲染列表头
-  const renderColumnHeader = (column: ColumnConfig) => (
-    <div
-      key={column.id}
-      draggable
-      onDragStart={(e) => handleDragStart(e, column.id)}
-      onDragOver={(e) => handleDragOver(e, column.id)}
-      onDragLeave={handleDragLeave}
-      onDrop={(e) => handleDrop(e, column.id)}
-      onDragEnd={handleDragEnd}
-      className={cn(
-        'text-xs text-muted-foreground font-medium text-right shrink-0 cursor-grab active:cursor-grabbing select-none',
-        'hover:text-foreground transition-colors px-1 py-0.5 rounded',
-        column.width,
-        draggedColumn === column.id && 'opacity-50 cursor-grabbing',
-        dragOverColumn === column.id && 'bg-accent ring-1 ring-primary'
-      )}
-    >
-      <div className="flex items-center justify-end gap-1 pointer-events-none">
-        <GripVertical className="w-3 h-3 opacity-50" />
-        <span>{column.label}</span>
-      </div>
-    </div>
-  );
-
   // We always have a root now (system root or selected folder)
   return (
     <div className="flex flex-col h-full">
@@ -412,7 +315,7 @@ export function FileTree() {
         </div>
       )}
 
-      {/* Column Headers */}
+      {/* Column Headers - 只显示名称/选择状态 */}
       <div className="flex items-center gap-1 px-2 py-1 border-b bg-muted/30">
         <span className="flex-1 text-xs text-muted-foreground font-medium">
           {selectedNodes.size > 0 ? (
@@ -423,7 +326,6 @@ export function FileTree() {
             '名称'
           )}
         </span>
-        {columns.filter(c => c.visible).map(renderColumnHeader)}
       </div>
 
       {/* Tree Content */}
@@ -448,13 +350,13 @@ export function FileTree() {
               搜索结果 ({displayEntries.length} 项)
             </div>
             {displayEntries.map((entry) => (
-              <TreeNode key={entry.path} entry={entry} depth={0} columns={columns} />
+              <TreeNode key={entry.path} entry={entry} depth={0} columns={DEFAULT_COLUMNS} />
             ))}
           </div>
         ) : rootNode ? (
           // 正常模式：显示虚拟根节点（只显示文件夹）
           <div className="py-1">
-            <TreeNode key={rootNode.path} entry={rootNode} depth={0} columns={columns} isVirtualRoot />
+            <TreeNode key={rootNode.path} entry={rootNode} depth={0} columns={DEFAULT_COLUMNS} isVirtualRoot />
           </div>
         ) : null}
       </ScrollArea>
