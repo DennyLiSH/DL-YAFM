@@ -7,10 +7,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["plugin-system"]
+plugin-system = ["wasmtime", "wasmtime-wasi"]
+
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang.org/cargo/issues/8519
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "dl_yafm_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -36,7 +40,6 @@ notify = { version = "6", features = ["serde"] }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
 
-# WASM 插件系统
-wasmtime = "25"
-wasmtime-wasi = "25"
-
+# WASM 插件系统 (optional)
+wasmtime = { version = "25", optional = true }
+wasmtime-wasi = { version = "25", optional = true }

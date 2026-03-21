@@ -990,7 +990,7 @@ pub fn detect_editors() -> Vec<EditorInfo> {
         }),
     ];
 
-    let mut result: Vec<EditorInfo> = editors
+    let result: Vec<EditorInfo> = editors
         .into_iter()
         .map(|(id, name, cmd)| EditorInfo {
             id: id.to_string(),
@@ -1001,13 +1001,15 @@ pub fn detect_editors() -> Vec<EditorInfo> {
 
     // Add Notepad++ only on Windows
     #[cfg(target_os = "windows")]
-    {
-        result.push(EditorInfo {
+    let result = {
+        let mut r = result;
+        r.push(EditorInfo {
             id: "notepad++".to_string(),
             name: "Notepad++".to_string(),
             available: is_command_available("notepad++"),
         });
-    }
+        r
+    };
 
     // Only return available editors
     result.into_iter().filter(|e| e.available).collect()

@@ -2,12 +2,14 @@ mod commands;
 mod config;
 mod error;
 mod models;
+#[cfg(feature = "plugin-system")]
 mod plugin;
 mod watcher;
 
 use commands::*;
 use config::ConfigManager;
 use parking_lot::Mutex;
+#[cfg(feature = "plugin-system")]
 use plugin::{PluginManager, PluginManagerState};
 use tauri::Manager;
 use std::path::PathBuf;
@@ -42,22 +44,25 @@ pub fn run() {
             });
 
             // Initialize plugin manager
-            let plugin_dir = app.path().app_data_dir()
-                .map_err(|e| format!("Failed to get app data dir: {}", e))?
-                .join("plugins");
+            #[cfg(feature = "plugin-system")]
+            {
+                let plugin_dir = app.path().app_data_dir()
+                    .map_err(|e| format!("Failed to get app data dir: {}", e))?
+                    .join("plugins");
 
-            let plugin_manager = PluginManager::new(plugin_dir)
-                .map_err(|e| format!("Failed to initialize plugin manager: {}", e))?;
+                let plugin_manager = PluginManager::new(plugin_dir)
+                    .map_err(|e| format!("Failed to initialize plugin manager: {}", e))?;
 
-            // Clone for async loading (shares internal Arc state)
-            let plugin_manager_for_async = plugin_manager.clone();
+                // Clone for async loading (shares internal Arc state)
+                let plugin_manager_for_async = plugin_manager.clone();
 
-            app.manage(PluginManagerState::new(plugin_manager));
+                app.manage(PluginManagerState::new(plugin_manager));
 
-            // Load plugins asynchronously without blocking startup
-            tauri::async_runtime::spawn(async move {
-                let _ = plugin_manager_for_async.load_all_plugins().await;
-            });
+                // Load plugins asynchronously without blocking startup
+                tauri::async_runtime::spawn(async move {
+                    let _ = plugin_manager_for_async.load_all_plugins().await;
+                });
+            }
 
             Ok(())
         })
@@ -101,11 +106,17 @@ pub fn run() {
             stop_all_watch,
             get_watched_paths,
             // Plugin commands
+            #[cfg(feature = "plugin-system")]
             get_plugins,
+            #[cfg(feature = "plugin-system")]
             get_plugin_menu_items,
+            #[cfg(feature = "plugin-system")]
             execute_plugin_action,
+            #[cfg(feature = "plugin-system")]
             reload_plugins,
+            #[cfg(feature = "plugin-system")]
             get_plugin_directory,
+            #[cfg(feature = "plugin-system")]
             open_plugin_directory,
         ])
         .run(tauri::generate_context!())
