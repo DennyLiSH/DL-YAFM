@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -7,46 +8,53 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { useArrowKeyNavigation } from '@/hooks/useArrowKeyNavigation';
 
 interface OverwriteConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fileName: string;
-  onReplace: () => void;
-  onSkip: () => void;
+  onOverwrite: () => void;
+  onRename: () => void;
+  onCancel?: () => void;
 }
 
 export function OverwriteConfirmDialog({
   open,
   onOpenChange,
   fileName,
-  onReplace,
-  onSkip,
+  onOverwrite,
+  onRename,
+  onCancel,
 }: OverwriteConfirmDialogProps) {
-  const handleReplace = () => {
+  const buttonsRef = useRef<HTMLDivElement>(null);
+  useArrowKeyNavigation(open, buttonsRef);
+
+  const handleOverwrite = () => {
     onOpenChange(false);
-    onReplace();
+    onOverwrite();
   };
 
-  const handleSkip = () => {
+  const handleRename = () => {
     onOpenChange(false);
-    onSkip();
+    onRename();
   };
 
   const handleCancel = () => {
     onOpenChange(false);
+    onCancel?.();
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
+      <DialogContent className="sm:max-w-[400px]" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>文件已存在</DialogTitle>
           <DialogDescription>
             目标位置已存在 "{fileName}"。您想要如何处理？
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="flex-col gap-2 sm:flex-row">
+        <DialogFooter ref={buttonsRef} className="flex-col gap-2 sm:flex-row">
           <Button
             type="button"
             variant="outline"
@@ -57,16 +65,16 @@ export function OverwriteConfirmDialog({
           <Button
             type="button"
             variant="secondary"
-            onClick={handleSkip}
+            onClick={handleRename}
           >
-            跳过
+            重命名
           </Button>
           <Button
             type="button"
             variant="destructive"
-            onClick={handleReplace}
+            onClick={handleOverwrite}
           >
-            替换
+            覆盖
           </Button>
         </DialogFooter>
       </DialogContent>

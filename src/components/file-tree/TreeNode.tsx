@@ -270,9 +270,33 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
     await doPaste();
   };
 
-  // 跳过：取消操作
-  const handleSkip = () => {
-    toast.info('已跳过');
+  // 重命名：粘贴时重命名新文件
+  const handleRename = async () => {
+    if (clipboardEntries.length === 0) return;
+
+    try {
+      for (const clipboardEntry of clipboardEntries) {
+        const fileName = clipboardEntry.sourceName;
+        const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
+        const baseName = fileName.replace(ext, '');
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+        const newFileName = `${baseName}_New_${timestamp}${ext}`;
+        const destPath = `${entry.path}/${newFileName}`.replace(/\\/g, '/');
+
+        await fileService.copyEntry(clipboardEntry.sourcePath, destPath);
+      }
+      toast.success('已粘贴并重命名');
+      handleRefresh();
+    } catch (err) {
+      toast.error(`重命名粘贴失败: ${getErrorMessage(err)}`);
+    }
   };
 
   // ====== Drag and Drop Handlers ======
@@ -584,8 +608,8 @@ export function TreeNode({ entry, depth, columns = DEFAULT_COLUMNS, isVirtualRoo
         open={showOverwriteDialog}
         onOpenChange={setShowOverwriteDialog}
         fileName={clipboardEntries.length > 1 ? `${clipboardEntries.length} 个项目` : (clipboardEntries[0]?.sourceName || '')}
-        onReplace={handleReplace}
-        onSkip={handleSkip}
+        onOverwrite={handleReplace}
+        onRename={handleRename}
       />
     </div>
   );

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { fileService } from '@/services/fileService';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/error';
+import { useArrowKeyNavigation } from '@/hooks/useArrowKeyNavigation';
 import type { FileEntry } from '@/types/file';
 
 interface DeleteConfirmDialogProps {
@@ -31,6 +33,9 @@ export function DeleteConfirmDialog({
   isDir,
   onSuccess,
 }: DeleteConfirmDialogProps) {
+  const buttonsRef = useRef<HTMLDivElement>(null);
+  useArrowKeyNavigation(open, buttonsRef);
+
   // 确定删除模式：多选或单选
 
   // 获取要删除的项目列表
@@ -91,14 +96,14 @@ export function DeleteConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
+      <DialogContent className="sm:max-w-[400px]" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>移至回收站</DialogTitle>
           <DialogDescription>
             {getDescription()}
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter>
+        <DialogFooter ref={buttonsRef}>
           <Button
             type="button"
             variant="outline"

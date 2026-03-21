@@ -195,4 +195,21 @@ export const fileService = {
   async openWithEditor(path: string, editorId: string): Promise<void> {
     return invoke('open_with_editor', { path, editorId });
   },
+
+  // === System Clipboard Commands ===
+
+  // Copy file paths to system clipboard
+  async copyPathsToClipboard(paths: string[]): Promise<void> {
+    const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
+    await writeText(paths.join('\n'));
+  },
+
+  // Read file paths from system clipboard
+  async readPathsFromClipboard(): Promise<string[]> {
+    const { readText } = await import('@tauri-apps/plugin-clipboard-manager');
+    const text = await readText();
+    if (!text) return [];
+    // Split by newlines and filter valid paths
+    return text.split(/\r?\n/).filter(line => line.trim().length > 0);
+  },
 };

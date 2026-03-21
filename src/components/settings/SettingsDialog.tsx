@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { GlobalSettings } from './GlobalSettings';
 import { FolderSettings } from './FolderSettings';
 import { PluginSettings } from './PluginSettings';
+import { ShortcutSettings } from './ShortcutSettings';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -32,6 +33,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             <TabsTrigger value="plugins" className="flex-1">
               插件
             </TabsTrigger>
+            <TabsTrigger value="shortcuts" className="flex-1">
+              快捷键
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="global">
             <GlobalSettings />
@@ -41,6 +45,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </TabsContent>
           <TabsContent value="plugins">
             <PluginSettings />
+          </TabsContent>
+          <TabsContent value="shortcuts">
+            <ShortcutSettings />
           </TabsContent>
         </Tabs>
       </DialogContent>

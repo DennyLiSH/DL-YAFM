@@ -8,6 +8,7 @@ import {
   NewFileDialog,
   RenameDialog,
   DeleteConfirmDialog,
+  OverwriteConfirmDialog,
 } from '@/components/dialogs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
@@ -85,6 +86,8 @@ export function FileBrowser() {
   const [showNewFileDialog, setShowNewFileDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
+  const [conflictInfo, setConflictInfo] = useState<{ sourcePath: string; destPath: string; fileName: string } | null>(null);
 
   // Search states
   const [searchQuery, setSearchQuery] = useState('');
@@ -255,6 +258,9 @@ export function FileBrowser() {
   // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 如果有对话框打开，不处理快捷键
+      if (showDeleteDialog || showRenameDialog || showNewFolderDialog || showNewFileDialog || showOverwriteDialog) return;
+
       const target = e.target as HTMLElement;
       const isInBrowser = target.closest('[data-file-browser]');
       if (!isInBrowser) return;
@@ -309,10 +315,10 @@ export function FileBrowser() {
       // DELETE: 删除选中项
       if (e.key === 'Delete' && selectedNodes.size > 0) {
         e.preventDefault();
-        const entries = getSelectedEntries();
-        const firstEntry = entries[0];
-        if (firstEntry) {
-          setSelectedEntry(firstEntry);
+        // 从当前显示的条目中查找选中项
+        const selectedEntry = sortedEntries.find(e => selectedNodes.has(e.path));
+        if (selectedEntry) {
+          setSelectedEntry(selectedEntry);
           setShowDeleteDialog(true);
         }
       }
@@ -320,10 +326,10 @@ export function FileBrowser() {
       // F2: 重命名
       if (e.key === 'F2' && selectedNodes.size === 1) {
         e.preventDefault();
-        const entries = getSelectedEntries();
-        const firstEntry = entries[0];
-        if (firstEntry) {
-          setSelectedEntry(firstEntry);
+        // 从当前显示的条目中查找选中项
+        const selectedEntry = sortedEntries.find(e => selectedNodes.has(e.path));
+        if (selectedEntry) {
+          setSelectedEntry(selectedEntry);
           setShowRenameDialog(true);
         }
       }
@@ -350,28 +356,38 @@ export function FileBrowser() {
         }
       }
 
-      // Ctrl/Cmd + C: 复制选中项
+      // Ctrl/Cmd + C: 复制选中项到应用剪贴板和系统剪贴板
       if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedNodes.size > 0) {
-        const entries = getSelectedEntries();
-        if (entries.length > 0) {
-          copySelectedToClipboard(entries);
-          toast.success(`已复制 ${entries.length} 个项目到剪贴板`);
+        // 从当前显示的条目中获取选中项
+        const selectedEntries = sortedEntries.filter(entry => selectedNodes.has(entry.path));
+        if (selectedEntries.length > 0) {
+          // 复制到应用内部剪贴板
+          copySelectedToClipboard(selectedEntries);
+          // 同时复制路径到系统剪贴板
+          fileService.copyPathsToClipboard(selectedEntries.map(e => e.path));
+          toast.success(`已复制 ${selectedEntries.length} 个项目`);
         }
       }
 
       // Ctrl/Cmd + X: 剪切选中项
       if ((e.ctrlKey || e.metaKey) && e.key === 'x' && selectedNodes.size > 0) {
-        const entries = getSelectedEntries();
-        if (entries.length > 0) {
-          cutSelectedToClipboard(entries);
-          toast.success(`已剪切 ${entries.length} 个项目到剪贴板`);
+        const selectedEntries = sortedEntries.filter(entry => selectedNodes.has(entry.path));
+        if (selectedEntries.length > 0) {
+          cutSelectedToClipboard(selectedEntries);
+          toast.success(`已剪切 ${selectedEntries.length} 个项目到剪贴板`);
         }
+      }
+
+      // Ctrl/Cmd + V: 从系统剪贴板粘贴到当前目录
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v' && currentBrowsePath) {
+        e.preventDefault();
+        handlePasteFromClipboard();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries, getCurrentSelectedIndex, selectSingleItem, browseViewMode, searchQuery, handleClearSearch, isSearching, cancelSearch]);
+  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, refreshBrowse, getCurrentSelectedIndex, selectSingleItem, browseViewMode, searchQuery, handleClearSearch, isSearching, cancelSearch, showDeleteDialog, showRenameDialog, showNewFolderDialog, showNewFileDialog, showOverwriteDialog]);
 
   // 切换目录时清除选择
   useEffect(() => {
@@ -461,6 +477,97 @@ export function FileBrowser() {
     refreshBrowse();
     setSelectedEntry(null);
   };
+
+  // 从系统剪贴板粘贴
+  const handlePasteFromClipboard = useCallback(async () => {
+    if (!currentBrowsePath) return;
+
+    try {
+      const paths = await fileService.readPathsFromClipboard();
+      if (paths.length === 0) {
+        toast.info('系统剪贴板中没有文件路径');
+        return;
+      }
+
+      // 处理第一个文件（如果有多个文件，逐个处理）
+      const sourcePath = paths[0];
+      if (!sourcePath) {
+        toast.error('无效的文件路径');
+        return;
+      }
+      const fileName = sourcePath.split(/[\\/]/).pop() || 'file';
+      const destPath = `${currentBrowsePath}/${fileName}`.replace(/\\/g, '/');
+
+      // 检查源路径是否存在
+      const sourceExists = await fileService.checkPathExists(sourcePath);
+      if (!sourceExists) {
+        toast.error(`源路径不存在: ${fileName}`);
+        return;
+      }
+
+      // 检查目标路径是否存在
+      const destExists = await fileService.checkPathExists(destPath);
+      if (destExists) {
+        // 显示冲突对话框
+        setConflictInfo({ sourcePath, destPath, fileName });
+        setShowOverwriteDialog(true);
+      } else {
+        // 直接复制
+        await fileService.copyEntry(sourcePath, destPath);
+        toast.success(`已粘贴 ${fileName}`);
+        refreshBrowse();
+      }
+    } catch (err) {
+      toast.error(`粘贴失败: ${getErrorMessage(err)}`);
+    }
+  }, [currentBrowsePath, refreshBrowse]);
+
+  // 执行覆盖操作
+  const handleOverwriteConfirm = useCallback(async () => {
+    if (!conflictInfo) return;
+
+    try {
+      // 先删除目标文件，再复制
+      await fileService.deleteEntry(conflictInfo.destPath, true);
+      await fileService.copyEntry(conflictInfo.sourcePath, conflictInfo.destPath);
+      toast.success(`已覆盖 ${conflictInfo.fileName}`);
+      refreshBrowse();
+    } catch (err) {
+      toast.error(`覆盖失败: ${getErrorMessage(err)}`);
+    } finally {
+      setConflictInfo(null);
+    }
+  }, [conflictInfo, refreshBrowse]);
+
+  // 执行重命名操作（新文件名加后缀）
+  const handleRenameAndPaste = useCallback(async () => {
+    if (!conflictInfo) return;
+
+    try {
+      // 生成新文件名
+      const { sourcePath, destPath, fileName } = conflictInfo;
+      const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
+      const baseName = fileName.replace(ext, '');
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+      const newFileName = `${baseName}_New_${timestamp}${ext}`;
+      const newDestPath = destPath.replace(fileName, newFileName);
+
+      await fileService.copyEntry(sourcePath, newDestPath);
+      toast.success(`已粘贴为新文件: ${newFileName}`);
+      refreshBrowse();
+    } catch (err) {
+      toast.error(`重命名粘贴失败: ${getErrorMessage(err)}`);
+    } finally {
+      setConflictInfo(null);
+    }
+  }, [conflictInfo, refreshBrowse]);
 
   // 复制处理
   const handleCopy = (entry: FileEntry) => {
@@ -612,6 +719,20 @@ export function FileBrowser() {
               placeholder="搜索当前目录..."
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
+              onKeyDown={(e) => {
+                // Alt+A: 全选输入内容
+                if (e.altKey && e.key.toLowerCase() === 'a') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.currentTarget.select();
+                }
+                // Escape: 取消搜索
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleClearSearch();
+                  e.currentTarget.blur();
+                }
+              }}
               className="pl-6 pr-6 h-7 text-xs"
             />
             {(searchQuery || isSearching) && (
@@ -776,7 +897,7 @@ export function FileBrowser() {
                         onDoubleClick={() => handleDoubleClick(entry)}
                       >
                         <span className="text-3xl mb-2">{getFileIcon(entry)}</span>
-                        <span className="text-xs text-center line-clamp-3 w-full" title={entry.name}>
+                        <span className="text-xs text-center line-clamp-3 w-full break-all" title={entry.name}>
                           {entry.name}
                         </span>
                       </div>
@@ -950,6 +1071,20 @@ export function FileBrowser() {
             }}
           />
         </>
+      )}
+
+      {/* Paste conflict dialog */}
+      {conflictInfo && (
+        <OverwriteConfirmDialog
+          open={showOverwriteDialog}
+          onOpenChange={(open) => {
+            setShowOverwriteDialog(open);
+            if (!open) setConflictInfo(null);
+          }}
+          fileName={conflictInfo.fileName}
+          onOverwrite={handleOverwriteConfirm}
+          onRename={handleRenameAndPaste}
+        />
       )}
 
       {/* New folder dialog for empty area context menu */}
