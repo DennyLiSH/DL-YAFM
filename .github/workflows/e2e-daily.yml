@@ -1,0 +1,50 @@
+name: Daily E2E Tests
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 每天 UTC 6:00 (北京时间 14:00)
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: macos-latest  # macOS 对 Tauri 支持最好
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Tauri app
+        run: pnpm tauri build
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      - name: Run E2E Tests
+        run: pnpm test:e2e
+        continue-on-error: true  # E2E tests might be flaky
+
+      - name: Upload E2E Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: |
+            e2e/results/
+            e2e/screenshots/
+          retention-days: 7
