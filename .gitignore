@@ -176,4 +176,5 @@ src-tauri/target/nsis/
 _*/
 .claude/
 test/
+!src/test/
 .gstack/
