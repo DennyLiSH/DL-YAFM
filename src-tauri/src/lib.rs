@@ -75,6 +75,8 @@ pub fn run() {
             cancel_copy_task,
             move_entry,
             search_files,
+            search_files_async,
+            cancel_search,
             read_file_content,
             read_file_as_base64,
             create_file,

@@ -65,6 +65,7 @@ interface FileTreeState {
   searchQuery: string;
   searchResults: FileEntry[];
   isSearching: boolean;
+  currentSearchId: string | null;
   isLoading: boolean;
   error: string | null;
 
@@ -98,6 +99,7 @@ interface FileTreeState {
   loadRootEntries: () => Promise<void>;
   setSearchQuery: (query: string) => void;
   search: (query: string, directory?: string) => Promise<void>;
+  cancelSearch: () => void;
   refreshNode: (path: string) => Promise<void>;
   clearError: () => void;
 
@@ -146,6 +148,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   searchQuery: '',
   searchResults: [],
   isSearching: false,
+  currentSearchId: null,
   isLoading: false,
   error: null,
 
@@ -389,19 +392,49 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
 
   search: async (query, directory) => {
-    const { rootPath, currentBrowsePath } = get();
+    const { rootPath, currentBrowsePath, currentSearchId } = get();
     const searchDir = directory || currentBrowsePath || rootPath;
     if (!searchDir || !query.trim()) {
-      set({ searchResults: [], isSearching: false });
+      set({ searchResults: [], isSearching: false, currentSearchId: null });
       return;
     }
 
-    set({ isSearching: true, searchQuery: query });
+    // Cancel any existing search
+    if (currentSearchId) {
+      try {
+        await fileService.cancelSearch(currentSearchId);
+      } catch {
+        // Ignore cancellation errors
+      }
+    }
+
+    // Generate new search ID
+    const searchId = `search-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    set({ isSearching: true, searchQuery: query, currentSearchId: searchId });
+
     try {
-      const results = await fileService.searchFiles(searchDir, query);
-      set({ searchResults: results, isSearching: false });
+      const results = await fileService.searchFilesAsync(searchId, searchDir, query);
+      // Only update if this is still the current search
+      if (get().currentSearchId === searchId) {
+        set({ searchResults: results, isSearching: false, currentSearchId: null });
+      }
     } catch (err) {
-      set({ searchResults: [], isSearching: false, error: getErrorMessage(err) });
+      const errorMsg = getErrorMessage(err);
+      if (errorMsg.includes('cancelled')) {
+        // Search was cancelled, don't show error
+        set({ isSearching: false, currentSearchId: null });
+      } else {
+        set({ searchResults: [], isSearching: false, error: errorMsg, currentSearchId: null });
+      }
+    }
+  },
+
+  cancelSearch: () => {
+    const { currentSearchId } = get();
+    if (currentSearchId) {
+      fileService.cancelSearch(currentSearchId).catch(() => {});
+      set({ isSearching: false, currentSearchId: null, searchResults: [] });
     }
   },
 

@@ -71,6 +71,16 @@ export const fileService = {
     return invoke('search_files', { directory, query });
   },
 
+  // Async search with cancellation support
+  async searchFilesAsync(searchId: string, directory: string, query: string): Promise<FileEntry[]> {
+    return invoke('search_files_async', { searchId, directory, query });
+  },
+
+  // Cancel an active search
+  async cancelSearch(searchId: string): Promise<boolean> {
+    return invoke('cancel_search', { searchId });
+  },
+
   async grantDirectoryAccess(path: string): Promise<void> {
     return invoke('grant_directory_access', { path });
   },

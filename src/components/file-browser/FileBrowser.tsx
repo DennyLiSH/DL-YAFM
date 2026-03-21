@@ -71,6 +71,7 @@ export function FileBrowser() {
     pasteFromClipboard,
     setBrowseViewMode,
     search,
+    cancelSearch,
   } = useFileTreeStore();
 
   const { searchDebounceMs } = useSettingsStore();
@@ -118,7 +119,11 @@ export function FileBrowser() {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-  }, []);
+    // 取消正在进行的搜索
+    if (isSearching) {
+      cancelSearch();
+    }
+  }, [isSearching, cancelSearch]);
 
   // 清理定时器
   useEffect(() => {
@@ -332,9 +337,12 @@ export function FileBrowser() {
         }
       }
 
-      // Escape: 清除搜索或选择
+      // Escape: 取消搜索或清除搜索或选择
       if (e.key === 'Escape') {
-        if (searchQuery) {
+        if (isSearching) {
+          cancelSearch();
+          handleClearSearch();
+        } else if (searchQuery) {
           handleClearSearch();
         } else {
           clearSelection();
@@ -363,7 +371,7 @@ export function FileBrowser() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries, getCurrentSelectedIndex, selectSingleItem, browseViewMode, searchQuery, handleClearSearch]);
+  }, [currentBrowsePath, sortedEntries, selectedNodes, selectAll, clearSelection, copySelectedToClipboard, cutSelectedToClipboard, getSelectedEntries, getCurrentSelectedIndex, selectSingleItem, browseViewMode, searchQuery, handleClearSearch, isSearching, cancelSearch]);
 
   // 切换目录时清除选择
   useEffect(() => {
@@ -606,12 +614,13 @@ export function FileBrowser() {
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-6 pr-6 h-7 text-xs"
             />
-            {searchQuery && (
+            {(searchQuery || isSearching) && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6"
                 onClick={handleClearSearch}
+                title={isSearching ? "取消搜索" : "清除"}
               >
                 <X className="w-3 h-3" />
               </Button>

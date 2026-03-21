@@ -108,6 +108,10 @@ use std::sync::LazyLock;
 static COPY_CANCEL_FLAGS: LazyLock<Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
+/// Global search task state for cancellation
+static SEARCH_CANCEL_FLAGS: LazyLock<Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
 /// Get system root entries (drives on Windows, "/" on Unix)
 #[tauri::command]
 pub fn get_system_root_entries() -> Result<Vec<FileEntry>> {
@@ -759,6 +763,92 @@ pub fn search_files(directory: String, query: String) -> Result<Vec<FileEntry>> 
     sort_entries(&mut results);
 
     Ok(results)
+}
+
+/// Async search with cancellation support
+#[tauri::command]
+pub async fn search_files_async(
+    search_id: String,
+    directory: String,
+    query: String,
+) -> Result<Vec<FileEntry>> {
+    let dir_path = Path::new(&directory).to_path_buf();
+
+    if !dir_path.exists() {
+        return Err(FileExplorerError::PathNotFound(directory));
+    }
+
+    // Create cancellation flag
+    let cancelled = Arc::new(AtomicBool::new(false));
+    SEARCH_CANCEL_FLAGS.lock().insert(search_id.clone(), cancelled.clone());
+
+    let query_lower = query.to_lowercase();
+    let mut results = Vec::with_capacity(64);
+
+    // Recursive search with cancellation check
+    fn search_recursive_cancelable(
+        dir: &Path,
+        query: &str,
+        results: &mut Vec<FileEntry>,
+        cancelled: &Arc<AtomicBool>,
+    ) -> bool {
+        // Check cancellation at the start of each directory
+        if cancelled.load(Ordering::SeqCst) {
+            return false; // Cancelled
+        }
+
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                // Check cancellation periodically
+                if cancelled.load(Ordering::SeqCst) {
+                    return false;
+                }
+
+                let path = entry.path();
+                let name = path.file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+
+                if name.contains(query) {
+                    if let Some(file_entry) = FileEntry::from_path(&path) {
+                        results.push(file_entry);
+                    }
+                }
+
+                // Continue searching subdirectories if results < 1000
+                if path.is_dir() && results.len() < 1000 {
+                    if !search_recursive_cancelable(&path, query, results, cancelled) {
+                        return false; // Propagate cancellation
+                    }
+                }
+            }
+        }
+        true // Completed normally
+    }
+
+    let completed = search_recursive_cancelable(&dir_path, &query_lower, &mut results, &cancelled);
+
+    // Remove from cancellation map
+    SEARCH_CANCEL_FLAGS.lock().remove(&search_id);
+
+    if !completed {
+        return Err(FileExplorerError::InvalidPath("Search cancelled".to_string()));
+    }
+
+    sort_entries(&mut results);
+
+    Ok(results)
+}
+
+/// Cancel an active search
+#[tauri::command]
+pub fn cancel_search(search_id: String) -> bool {
+    if let Some(flag) = SEARCH_CANCEL_FLAGS.lock().get(&search_id) {
+        flag.store(true, Ordering::SeqCst);
+        true
+    } else {
+        false
+    }
 }
 
 #[tauri::command]
