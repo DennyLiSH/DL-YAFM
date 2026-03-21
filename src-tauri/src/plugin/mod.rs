@@ -37,15 +37,6 @@ pub mod manager;
 pub mod models;
 pub mod sandbox;
 
-pub use error::{PluginError, Result};
-pub use manager::{LoadedPlugin, PluginManager, PluginManagerState};
-pub use models::{
-    PluginAction,
-    PluginContext,
-    PluginInfo,
-    PluginManifest,
-    PluginMenuItem,
-    PluginMenuItemConfig,
-    PluginResult,
-};
-pub use sandbox::SimpleSandbox;
+// Re-export types used by other modules
+pub use manager::{PluginManager, PluginManagerState};
+pub use models::{PluginContext, PluginInfo, PluginMenuItem, PluginResult};

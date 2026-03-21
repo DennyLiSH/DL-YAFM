@@ -49,12 +49,15 @@ pub fn run() {
             let plugin_manager = PluginManager::new(plugin_dir)
                 .map_err(|e| format!("Failed to initialize plugin manager: {}", e))?;
 
-            // Load plugins synchronously (in production, consider async)
-            tauri::async_runtime::block_on(async {
-                let _ = plugin_manager.load_all_plugins().await;
-            });
+            // Clone for async loading (shares internal Arc state)
+            let plugin_manager_for_async = plugin_manager.clone();
 
             app.manage(PluginManagerState::new(plugin_manager));
+
+            // Load plugins asynchronously without blocking startup
+            tauri::async_runtime::spawn(async move {
+                let _ = plugin_manager_for_async.load_all_plugins().await;
+            });
 
             Ok(())
         })

@@ -13,7 +13,6 @@ pub enum FileChangeKind {
     Created,
     Modified,
     Deleted,
-    Renamed,
 }
 
 /// File change event payload sent to frontend

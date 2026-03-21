@@ -50,7 +50,4 @@ impl ConfigManager {
         Ok(())
     }
 
-    pub fn get_config_path(&self) -> &PathBuf {
-        &self.config_path
-    }
 }

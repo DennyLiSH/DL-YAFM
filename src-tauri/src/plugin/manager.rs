@@ -16,8 +16,6 @@ pub struct LoadedPlugin {
     pub manifest: PluginManifest,
     /// WASM 模块
     pub module: Module,
-    /// 插件路径
-    pub path: PathBuf,
 }
 
 /// 插件管理器
@@ -108,7 +106,6 @@ impl PluginManager {
         let loaded_plugin = LoadedPlugin {
             manifest,
             module,
-            path: plugin_path.to_path_buf(),
         };
 
         self.plugins.write().insert(plugin_id.clone(), loaded_plugin);

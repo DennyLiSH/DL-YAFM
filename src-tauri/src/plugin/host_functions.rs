@@ -40,22 +40,6 @@ use super::models::PluginContext;
 pub struct HostFunctions;
 
 impl HostFunctions {
-    /// 注册所有 Host Functions 到 WASM Linker
-    ///
-    /// 目前为预留框架，后续按需添加具体功能
-    pub fn register_to_linker(linker: &mut Linker<PluginContext>) -> Result<()> {
-        // 预留：未来添加文件操作函数
-        // Self::register_fs_functions(linker)?;
-
-        // 预留：未来添加对话框函数
-        // Self::register_dialog_functions(linker)?;
-
-        // 预留：未来添加网络函数
-        // Self::register_network_functions(linker)?;
-
-        Ok(())
-    }
-
     // ============================================================
     // 文件系统 Host Functions (预留)
     // ============================================================
