@@ -209,7 +209,7 @@ fn get_drive_label(drive: &str) -> String {
 fn get_unix_root_entries() -> Result<Vec<FileEntry>> {
     let root = Path::new("/");
 
-    let entries: Vec<FileEntry> = fs::read_dir(root)
+    let mut entries: Vec<FileEntry> = fs::read_dir(root)
         .map_err(FileExplorerError::from)?
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| {
