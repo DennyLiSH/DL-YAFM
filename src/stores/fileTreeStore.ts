@@ -162,11 +162,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   previewType: 'unsupported',
   isLoadingPreview: false,
   previewError: null,
-  previewPanelCollapsed: (() => {
-    if (typeof window === 'undefined') return false;
-    const saved = localStorage.getItem('preview-panel-collapsed');
-    return saved === 'true';
-  })(),
+  previewPanelCollapsed: true,
 
   // Clipboard initial state (支持多选)
   clipboardEntries: [],
@@ -529,7 +525,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     const textTypes = ['txt', 'json', 'js', 'ts', 'jsx', 'tsx', 'css', 'html', 'xml', 'yaml', 'yml', 'log', 'ini', 'conf', 'sh', 'bat'];
     const imageTypes = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'];
 
-    set({ previewFile: entry, isLoadingPreview: true, previewError: null });
+    set({ previewFile: entry, isLoadingPreview: true, previewError: null, previewPanelCollapsed: false });
 
     try {
       if (ext === 'md') {
@@ -590,9 +586,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   }),
 
   togglePreviewPanel: () => {
-    const newState = !get().previewPanelCollapsed;
-    localStorage.setItem('preview-panel-collapsed', String(newState));
-    set({ previewPanelCollapsed: newState });
+    set({ previewPanelCollapsed: !get().previewPanelCollapsed });
   },
 
   // Clipboard actions
