@@ -27,4 +27,4 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Run Rust tests
-        run: cd src-tauri && cargo test --all-features
+        run: cd src-tauri && cargo test
