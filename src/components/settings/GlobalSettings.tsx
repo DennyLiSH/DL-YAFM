@@ -17,16 +17,38 @@ const isValidTheme = (value: string): value is Theme =>
 const isValidLanguage = (value: string): value is Language =>
   value === 'zh-CN' || value === 'en-US';
 
+/** Preset font options */
+const SANS_FONT_OPTIONS = [
+  { value: 'LXGW WenKai', label: '霞鹜文楷 (LXGW WenKai)' },
+  { value: 'Microsoft YaHei', label: '微软雅黑' },
+  { value: 'PingFang SC', label: '苹方 (macOS)' },
+  { value: 'SimHei', label: '黑体' },
+  { value: 'system-ui', label: '系统默认' },
+];
+
+const MONO_FONT_OPTIONS = [
+  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
+  { value: 'Fira Code', label: 'Fira Code' },
+  { value: 'Consolas', label: 'Consolas (Windows)' },
+  { value: 'SF Mono', label: 'SF Mono (macOS)' },
+  { value: 'Menlo', label: 'Menlo (macOS)' },
+  { value: 'ui-monospace', label: '系统默认' },
+];
+
 export function GlobalSettings() {
   const {
     theme,
     language,
     showHiddenFiles,
     personalIntro,
+    fontSans,
+    fontMono,
     setTheme,
     setLanguage,
     setShowHiddenFiles,
     setPersonalIntro,
+    setFontSans,
+    setFontMono,
   } = useSettingsStore();
 
   /** Handle theme change with type guard */
@@ -41,6 +63,15 @@ export function GlobalSettings() {
     if (v !== null && isValidLanguage(v)) {
       setLanguage(v);
     }
+  };
+
+  /** Handle font change */
+  const handleFontSansChange = (v: string | null) => {
+    setFontSans(v ?? '');
+  };
+
+  const handleFontMonoChange = (v: string | null) => {
+    setFontMono(v ?? '');
   };
 
   return (
@@ -76,6 +107,52 @@ export function GlobalSettings() {
           <SelectContent>
             <SelectItem value="zh-CN">简体中文</SelectItem>
             <SelectItem value="en-US">English</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* 字体设置 - 普通字体 */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <label className="text-sm font-medium">界面字体</label>
+          <p className="text-xs text-muted-foreground">选择应用的显示字体</p>
+        </div>
+        <Select
+          value={fontSans}
+          onValueChange={handleFontSansChange}
+        >
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SANS_FONT_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* 字体设置 - 等宽字体 */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <label className="text-sm font-medium">等宽字体</label>
+          <p className="text-xs text-muted-foreground">用于代码和文本预览</p>
+        </div>
+        <Select
+          value={fontMono}
+          onValueChange={handleFontMonoChange}
+        >
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MONO_FONT_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

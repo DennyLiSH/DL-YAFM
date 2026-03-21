@@ -26,6 +26,10 @@ pub struct Settings {
     pub show_hidden_files: bool,
     pub personal_intro: String,
     pub folder_descriptions: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_sans: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_mono: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

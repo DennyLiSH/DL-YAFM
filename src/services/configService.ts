@@ -18,6 +18,8 @@ export interface Settings {
   show_hidden_files: boolean;
   personal_intro: string;
   folder_descriptions: Record<string, string>;
+  font_sans?: string;
+  font_mono?: string;
 }
 
 /** 书签条目 */
