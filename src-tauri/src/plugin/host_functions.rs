@@ -31,6 +31,7 @@
 //!    }
 //!    ```
 
+#[cfg(feature = "plugin-system")]
 use wasmtime::Linker;
 
 use super::error::Result;

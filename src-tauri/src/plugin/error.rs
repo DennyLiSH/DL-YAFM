@@ -56,6 +56,7 @@ impl From<std::io::Error> for PluginError {
     }
 }
 
+#[cfg(feature = "plugin-system")]
 impl From<wasmtime::Error> for PluginError {
     fn from(err: wasmtime::Error) -> Self {
         PluginError::WasmInstantiationError(err.to_string())

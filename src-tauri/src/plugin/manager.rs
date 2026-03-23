@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::{Mutex, RwLock};
+#[cfg(feature = "plugin-system")]
 use wasmtime::{Config, Engine, Module};
 use tokio::fs;
 

@@ -1,3 +1,4 @@
+#[cfg(feature = "plugin-system")]
 use wasmtime::*;
 
 use super::error::{PluginError, Result};
