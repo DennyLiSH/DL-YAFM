@@ -9,7 +9,7 @@ edition = "2021"
 
 [features]
 default = ["plugin-system"]
-plugin-system = ["wasmtime", "wasmtime-wasi"]
+plugin-system = ["wasmtime"]
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -42,5 +42,4 @@ notify = { version = "6", features = ["serde"] }
 windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
 
 # WASM 插件系统 (optional)
-wasmtime = { version = "25", optional = true }
-wasmtime-wasi = { version = "25", optional = true }
+wasmtime = { version = "27", optional = true }
