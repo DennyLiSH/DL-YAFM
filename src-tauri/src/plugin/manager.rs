@@ -100,7 +100,7 @@ impl PluginManager {
 
         // 3. 验证并编译 WASM 模块
         let module = Module::from_binary(&self.engine, &wasm_bytes)
-            .map_err(|e| PluginError::WasmValidationError(e.to_string()))?;
+            .map_err(|e: wasmtime::Error| PluginError::WasmValidationError(e.to_string()))?;
 
         // 4. 存储到缓存
         let plugin_id = manifest.id.clone();

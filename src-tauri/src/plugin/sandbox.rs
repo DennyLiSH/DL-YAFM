@@ -54,7 +54,7 @@ impl SimpleSandbox {
 
         let result_ptr = execute_func
             .call(&mut self.store, (action_ptr, context_ptr))
-            .map_err(|e| PluginError::FunctionCallError(e.to_string()))?;
+            .map_err(|e: wasmtime::Error| PluginError::FunctionCallError(e.to_string()))?;
 
         let result_json = self.read_string(result_ptr)?;
 
@@ -86,7 +86,7 @@ impl SimpleSandbox {
 
         let ptr = alloc_func
             .call(&mut self.store, len as i32)
-            .map_err(|e| PluginError::MemoryAccessError(e.to_string()))?;
+            .map_err(|e: wasmtime::Error| PluginError::MemoryAccessError(e.to_string()))?;
 
         let data = self.memory.data_mut(&mut self.store);
         for (i, &byte) in bytes.iter().enumerate() {
@@ -141,7 +141,7 @@ impl SimpleSandbox {
 
         dealloc_func
             .call(&mut self.store, ptr)
-            .map_err(|e| PluginError::MemoryAccessError(e.to_string()))?;
+            .map_err(|e: wasmtime::Error| PluginError::MemoryAccessError(e.to_string()))?;
 
         Ok(())
     }

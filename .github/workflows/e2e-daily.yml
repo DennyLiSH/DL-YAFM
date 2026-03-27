@@ -25,7 +25,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-          key: 'e2e-v1-${{ runner.os }}'
+          key: 'e2e-v2-${{ runner.os }}'
 
       - name: Install dependencies
         run: pnpm install
