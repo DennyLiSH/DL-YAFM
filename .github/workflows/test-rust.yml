@@ -20,7 +20,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-          key: 'v4-${{ runner.os }}'
+          key: 'v5-${{ runner.os }}-no-default-features'
 
       - name: Install system dependencies (Linux only)
         if: matrix.os == 'ubuntu-latest'

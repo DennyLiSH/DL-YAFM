@@ -178,3 +178,4 @@ _*/
 test/
 !src/test/
 .gstack/
+CLAUDE.md
