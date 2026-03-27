@@ -1,8 +1,7 @@
-name: Daily E2E Tests
+name: E2E Tests
 
 on:
-  schedule:
-    - cron: '0 6 * * *'  # 每天 UTC 6:00 (北京时间 14:00)
+  pull_request:
   workflow_dispatch:
 
 jobs:
