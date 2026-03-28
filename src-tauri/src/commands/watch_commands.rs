@@ -6,7 +6,7 @@ use tauri::AppHandle;
 #[tauri::command]
 pub fn start_watch(app: AppHandle, path: String) -> Result<()> {
     watcher::watch_directory(app, &path)
-        .map_err(FileExplorerError::InvalidPath)?;
+        .map_err(FileExplorerError::WatchError)?;
     Ok(())
 }
 
@@ -14,7 +14,7 @@ pub fn start_watch(app: AppHandle, path: String) -> Result<()> {
 #[tauri::command]
 pub fn stop_watch(path: String) -> Result<()> {
     watcher::unwatch_directory(&path)
-        .map_err(FileExplorerError::InvalidPath)?;
+        .map_err(FileExplorerError::WatchError)?;
     Ok(())
 }
 
@@ -22,7 +22,7 @@ pub fn stop_watch(path: String) -> Result<()> {
 #[tauri::command]
 pub fn update_watch_paths(app: AppHandle, paths: Vec<String>) -> Result<()> {
     watcher::update_watched_paths(app, paths)
-        .map_err(FileExplorerError::InvalidPath)?;
+        .map_err(FileExplorerError::WatchError)?;
     Ok(())
 }
 
@@ -30,7 +30,7 @@ pub fn update_watch_paths(app: AppHandle, paths: Vec<String>) -> Result<()> {
 #[tauri::command]
 pub fn stop_all_watch() -> Result<()> {
     watcher::stop_all_watching()
-        .map_err(FileExplorerError::InvalidPath)?;
+        .map_err(FileExplorerError::WatchError)?;
     Ok(())
 }
 

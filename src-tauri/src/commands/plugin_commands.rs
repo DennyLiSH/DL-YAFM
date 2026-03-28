@@ -1,28 +1,29 @@
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
+use crate::error::Result;
 use crate::models::FileEntry;
 use crate::plugin::{
     PluginContext, PluginInfo, PluginManagerState, PluginMenuItem, PluginResult,
 };
 
-/// 获取所有已加载的插件列表
+/// Get all loaded plugins
 #[tauri::command]
-pub fn get_plugins(state: State<'_, PluginManagerState>) -> Result<Vec<PluginInfo>, String> {
+pub fn get_plugins(state: State<'_, PluginManagerState>) -> Result<Vec<PluginInfo>> {
     let manager = state.inner.lock();
     Ok(manager.get_all_plugins())
 }
 
-/// 获取所有插件菜单项
+/// Get all plugin menu items
 #[tauri::command]
 pub fn get_plugin_menu_items(
     state: State<'_, PluginManagerState>,
-) -> Result<Vec<PluginMenuItem>, String> {
+) -> Result<Vec<PluginMenuItem>> {
     let manager = state.inner.lock();
     Ok(manager.get_all_menu_items())
 }
 
-/// 执行插件动作
+/// Execute a plugin action
 #[tauri::command]
 pub fn execute_plugin_action(
     plugin_id: String,
@@ -30,7 +31,7 @@ pub fn execute_plugin_action(
     selected_entries: Vec<FileEntry>,
     current_directory: String,
     state: State<'_, PluginManagerState>,
-) -> Result<PluginResult, String> {
+) -> Result<PluginResult> {
     let manager = state.inner.lock();
 
     let context = PluginContext {
@@ -40,15 +41,14 @@ pub fn execute_plugin_action(
 
     manager
         .execute_action(&plugin_id, &action_id, context)
-        .map_err(|e| e.to_string())
+        .map_err(|e| crate::error::FileExplorerError::PluginError(e.to_string()))
 }
 
-/// 重新加载所有插件
+/// Reload all plugins
 #[tauri::command]
 pub async fn reload_plugins(
     state: State<'_, PluginManagerState>,
-) -> Result<Vec<String>, String> {
-    // 克隆管理器以避免长时间持有锁
+) -> Result<Vec<String>> {
     let manager = {
         let guard = state.inner.lock();
         guard.clone()
@@ -57,38 +57,35 @@ pub async fn reload_plugins(
     manager
         .reload_plugins()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| crate::error::FileExplorerError::PluginError(e.to_string()))
 }
 
-/// 获取插件目录路径
+/// Get the plugin directory path
 #[tauri::command]
 pub fn get_plugin_directory(
     state: State<'_, PluginManagerState>,
-) -> Result<String, String> {
+) -> Result<String> {
     let manager = state.inner.lock();
     Ok(manager.get_plugin_directory().to_string_lossy().to_string())
 }
 
-/// 在文件管理器中打开插件目录
+/// Open the plugin directory in file manager
 #[tauri::command]
 pub fn open_plugin_directory(
     app: AppHandle,
     state: State<'_, PluginManagerState>,
-) -> Result<(), String> {
+) -> Result<()> {
     let manager = state.inner.lock();
     let plugin_dir = manager.get_plugin_directory().to_path_buf();
-    drop(manager); // 释放锁
+    drop(manager); // Release lock before I/O
 
-    // 确保目录存在
     if !plugin_dir.exists() {
-        std::fs::create_dir_all(&plugin_dir)
-            .map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+        std::fs::create_dir_all(&plugin_dir)?;
     }
 
-    // 使用 opener 插件打开目录
     app.opener()
         .open_path(plugin_dir.to_string_lossy().to_string(), None::<&str>)
-        .map_err(|e| format!("Failed to open plugin directory: {}", e))?;
+        .map_err(|e| crate::error::FileExplorerError::PluginError(format!("Failed to open plugin directory: {}", e)))?;
 
     Ok(())
 }

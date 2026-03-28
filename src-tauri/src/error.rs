@@ -29,6 +29,18 @@ pub enum FileExplorerError {
 
     #[error("Trash error: {0}")]
     TrashError(String),
+
+    #[error("Operation cancelled: {0}")]
+    Cancelled(String),
+
+    #[error("Watch error: {0}")]
+    WatchError(String),
+
+    #[error("Plugin error: {0}")]
+    PluginError(String),
+
+    #[error("File too large: {0}")]
+    FileTooLarge(String),
 }
 
 pub type Result<T> = std::result::Result<T, FileExplorerError>;
@@ -47,5 +59,12 @@ impl From<std::io::Error> for FileExplorerError {
 impl From<trash::Error> for FileExplorerError {
     fn from(err: trash::Error) -> Self {
         FileExplorerError::TrashError(err.to_string())
+    }
+}
+
+#[cfg(feature = "plugin-system")]
+impl From<crate::plugin::error::PluginError> for FileExplorerError {
+    fn from(err: crate::plugin::error::PluginError) -> Self {
+        FileExplorerError::PluginError(err.to_string())
     }
 }

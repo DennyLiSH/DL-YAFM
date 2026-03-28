@@ -60,6 +60,9 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// Special path marker for system root
 pub const SYSTEM_ROOT_PATH: &str = "system-root";
 
+/// Maximum file size for reading into memory (100 MB)
+const MAX_READ_FILE_SIZE: u64 = 100 * 1024 * 1024;
+
 /// Copy progress information
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CopyProgress {
@@ -177,6 +180,10 @@ fn get_drive_label(drive: &str) -> String {
 
     let mut volume_name = [0u16; 256];
 
+    // SAFETY:
+    // - `wide_path` is a valid null-terminated wide string (we chain a 0 at the end)
+    // - `volume_name` is a valid mutable buffer of 256 u16 elements
+    // - All null_mut() parameters are optional output pointers, which is valid per API contract
     let result = unsafe {
         GetVolumeInformationW(
             wide_path.as_ptr(),
@@ -474,7 +481,7 @@ pub async fn copy_entry_async(
     } else {
         // Single file copy
         if cancelled.load(Ordering::SeqCst) {
-            Err(FileExplorerError::InvalidPath("Operation cancelled".to_string()))
+            Err(FileExplorerError::Cancelled("Copy operation cancelled".to_string()))
         } else {
             let file_name = src_path.file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -564,7 +571,7 @@ async fn copy_dir_recursive(
     state: &CopyState,
 ) -> Result<()> {
     if state.cancelled.load(Ordering::SeqCst) {
-        return Err(FileExplorerError::InvalidPath("Operation cancelled".to_string()));
+        return Err(FileExplorerError::Cancelled("Copy operation cancelled".to_string()));
     }
 
     tokio::fs::create_dir_all(ctx.dst).await
@@ -575,7 +582,7 @@ async fn copy_dir_recursive(
 
     while let Some(entry) = entries.next_entry().await.map_err(FileExplorerError::from)? {
         if state.cancelled.load(Ordering::SeqCst) {
-            return Err(FileExplorerError::InvalidPath("Operation cancelled".to_string()));
+            return Err(FileExplorerError::Cancelled("Copy operation cancelled".to_string()));
         }
 
         let src_path = entry.path();
@@ -692,6 +699,14 @@ pub fn read_file_as_base64(path: String) -> Result<String> {
         return Err(FileExplorerError::InvalidPath("Cannot read directory as base64".to_string()));
     }
 
+    let metadata = fs::metadata(file_path)?;
+    if metadata.len() > MAX_READ_FILE_SIZE {
+        return Err(FileExplorerError::FileTooLarge(format!(
+            "File size {} bytes exceeds maximum {} bytes",
+            metadata.len(), MAX_READ_FILE_SIZE
+        )));
+    }
+
     let bytes = fs::read(file_path)?;
     Ok(STANDARD.encode(&bytes))
 }
@@ -706,6 +721,14 @@ pub fn read_file_content(path: String) -> Result<String> {
 
     if file_path.is_dir() {
         return Err(FileExplorerError::InvalidPath("Cannot read directory".to_string()));
+    }
+
+    let metadata = fs::metadata(file_path)?;
+    if metadata.len() > MAX_READ_FILE_SIZE {
+        return Err(FileExplorerError::FileTooLarge(format!(
+            "File size {} bytes exceeds maximum {} bytes",
+            metadata.len(), MAX_READ_FILE_SIZE
+        )));
     }
 
     let content = fs::read_to_string(file_path)?;
@@ -816,23 +839,29 @@ pub async fn search_files_async(
                 }
 
                 // Continue searching subdirectories if results < 1000
-                if path.is_dir() && results.len() < 1000 {
-                    if !search_recursive_cancelable(&path, query, results, cancelled) {
-                        return false; // Propagate cancellation
-                    }
+                if path.is_dir() && results.len() < 1000
+                    && !search_recursive_cancelable(&path, query, results, cancelled) {
+                    return false; // Propagate cancellation
                 }
             }
         }
         true // Completed normally
     }
 
-    let completed = search_recursive_cancelable(&dir_path, &query_lower, &mut results, &cancelled);
+    let (completed, mut results) = tokio::task::spawn_blocking({
+        let dir_path = dir_path.clone();
+        let query_lower = query_lower.clone();
+        move || {
+            let completed = search_recursive_cancelable(&dir_path, &query_lower, &mut results, &cancelled);
+            (completed, results)
+        }
+    }).await.unwrap_or((false, Vec::new()));
 
     // Remove from cancellation map
     SEARCH_CANCEL_FLAGS.lock().remove(&search_id);
 
     if !completed {
-        return Err(FileExplorerError::InvalidPath("Search cancelled".to_string()));
+        return Err(FileExplorerError::Cancelled("Search cancelled".to_string()));
     }
 
     sort_entries(&mut results);

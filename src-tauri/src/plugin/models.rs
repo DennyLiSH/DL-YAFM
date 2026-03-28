@@ -115,6 +115,22 @@ pub enum PluginAction {
     RefreshFileList,
     /// 复制到剪贴板
     CopyToClipboard { text: String },
-    /// 打开 URL
+    /// 打开 URL (仅允许 http/https)
     OpenUrl { url: String },
+}
+
+impl PluginAction {
+    /// Validate that the action is safe to execute
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::OpenUrl { url } => {
+                let allowed = url.starts_with("http://") || url.starts_with("https://");
+                if !allowed {
+                    return Err(format!("URL scheme not allowed: {}", url));
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
 }

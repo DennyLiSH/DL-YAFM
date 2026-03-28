@@ -65,6 +65,12 @@ impl SimpleSandbox {
         let result: PluginResult = serde_json::from_str(&result_json)
             .map_err(|e| PluginError::PluginExecutionError(format!("Failed to parse result: {}", e)))?;
 
+        // Validate all actions before returning
+        for action in &result.actions {
+            action.validate()
+                .map_err(PluginError::PermissionDenied)?;
+        }
+
         Ok(result)
     }
 

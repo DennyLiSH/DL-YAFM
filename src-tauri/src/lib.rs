@@ -61,7 +61,9 @@ pub fn run() {
 
                 // Load plugins asynchronously without blocking startup
                 tauri::async_runtime::spawn(async move {
-                    let _ = plugin_manager_for_async.load_all_plugins().await;
+                    if let Err(e) = plugin_manager_for_async.load_all_plugins().await {
+                        eprintln!("[ERROR] Failed to load plugins: {}", e);
+                    }
                 });
             }
 

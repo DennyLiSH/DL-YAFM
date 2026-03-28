@@ -1,6 +1,6 @@
 use crate::config::ConfigManager;
 use crate::error::{FileExplorerError, Result};
-use crate::models::{AppConfig, Bookmark, ChatMessage, Settings};
+use crate::models::{AppConfig, Bookmark, ChatMessage, ChatRole, Settings};
 use parking_lot::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
@@ -100,7 +100,7 @@ pub fn get_chat_messages(state: State<AppConfigState>) -> Result<Vec<ChatMessage
 #[tauri::command]
 pub fn add_chat_message(
     state: State<AppConfigState>,
-    role: String,
+    role: ChatRole,
     content: String,
 ) -> Result<ChatMessage> {
     let mut config = state.inner.lock();
@@ -146,22 +146,25 @@ pub fn migrate_from_local_storage(
 
     // Migrate settings
     if let Some(json) = settings_json {
-        if let Ok(settings) = serde_json::from_str::<Settings>(&json) {
-            config.settings = settings;
+        match serde_json::from_str::<Settings>(&json) {
+            Ok(settings) => config.settings = settings,
+            Err(e) => eprintln!("[WARN] Failed to migrate settings: {}", e),
         }
     }
 
     // Migrate bookmarks
     if let Some(json) = bookmarks_json {
-        if let Ok(bookmarks) = serde_json::from_str::<Vec<Bookmark>>(&json) {
-            config.bookmarks = bookmarks;
+        match serde_json::from_str::<Vec<Bookmark>>(&json) {
+            Ok(bookmarks) => config.bookmarks = bookmarks,
+            Err(e) => eprintln!("[WARN] Failed to migrate bookmarks: {}", e),
         }
     }
 
     // Migrate chat messages
     if let Some(json) = chat_json {
-        if let Ok(messages) = serde_json::from_str::<Vec<ChatMessage>>(&json) {
-            config.chat_messages = messages;
+        match serde_json::from_str::<Vec<ChatMessage>>(&json) {
+            Ok(messages) => config.chat_messages = messages,
+            Err(e) => eprintln!("[WARN] Failed to migrate chat messages: {}", e),
         }
     }
 

@@ -44,8 +44,18 @@ impl ConfigManager {
         let content = serde_json::to_string_pretty(config)
             .map_err(|e| crate::error::FileExplorerError::ConfigError(format!("Serialize error: {}", e)))?;
 
-        fs::write(&self.config_path, content)
+        // Write to temp file first, then rename atomically to prevent data loss on crash
+        let temp_path = self.config_path.with_extension("tmp");
+
+        fs::write(&temp_path, &content)
             .map_err(|e| crate::error::FileExplorerError::IoError(e.to_string()))?;
+
+        fs::rename(&temp_path, &self.config_path)
+            .map_err(|e| {
+                // Clean up temp file if rename fails
+                let _ = fs::remove_file(&temp_path);
+                crate::error::FileExplorerError::IoError(e.to_string())
+            })?;
 
         Ok(())
     }

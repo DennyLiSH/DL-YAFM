@@ -34,7 +34,7 @@ pub struct Settings {
     pub search_debounce_ms: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Bookmark {
     pub id: String,
     pub name: String,
@@ -42,10 +42,20 @@ pub struct Bookmark {
     pub created_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Chat message role
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatRole {
+    #[default]
+    User,
+    Assistant,
+    System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatMessage {
     pub id: String,
-    pub role: String,
+    pub role: ChatRole,
     pub content: String,
     pub timestamp: u64,
 }
@@ -163,7 +173,7 @@ mod tests {
     fn test_chat_message_serialization() {
         let message = ChatMessage {
             id: "msg-1".to_string(),
-            role: "user".to_string(),
+            role: ChatRole::User,
             content: "Hello, world!".to_string(),
             timestamp: 1234567890,
         };
@@ -172,7 +182,7 @@ mod tests {
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.id, "msg-1");
-        assert_eq!(parsed.role, "user");
+        assert_eq!(parsed.role, ChatRole::User);
         assert_eq!(parsed.content, "Hello, world!");
     }
 
