@@ -43,3 +43,6 @@ windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32
 
 # WASM 插件系统 (optional)
 wasmtime = { version = "27", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

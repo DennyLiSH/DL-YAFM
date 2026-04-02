@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import { useEffect, useRef, useState } from 'react';
 
 interface MermaidBlockProps {
@@ -23,14 +24,14 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? 'dark' : 'default',
-          securityLevel: 'loose',
+          securityLevel: 'strict',
         });
 
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const { svg } = await mermaid.render(id, code);
 
         if (mounted && containerRef.current) {
-          containerRef.current.innerHTML = svg;
+          containerRef.current.innerHTML = DOMPurify.sanitize(svg);
           setIsLoading(false);
         }
       } catch (err) {

@@ -27,27 +27,31 @@ fn sort_entries(entries: &mut [FileEntry]) {
 /// Verify that a path is within the allowed root directory
 /// Returns the canonical path if verification passes
 fn verify_path_within_root(app: &AppHandle, path: &Path) -> Result<std::path::PathBuf> {
-    let canonical_path = path.canonicalize()
-        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to resolve path: {}", e)))?;
-
     let root_path_state = app.state::<RootPathState>();
     let root_path = root_path_state.inner.lock();
 
     match root_path.as_ref() {
-        Some(root) => {
-            if !canonical_path.starts_with(root) {
-                return Err(FileExplorerError::InvalidPath(
-                    "Access denied: path is outside the allowed directory".to_string()
-                ));
-            }
-            Ok(canonical_path)
-        }
+        Some(root) => is_path_within_root(root, path),
         None => {
             Err(FileExplorerError::InvalidPath(
                 "No root directory has been selected".to_string()
             ))
         }
     }
+}
+
+/// Pure path validation logic: check that a path resolves to within the given root.
+/// Separated from verify_path_within_root for testability.
+fn is_path_within_root(root: &Path, path: &Path) -> Result<std::path::PathBuf> {
+    let canonical_path = path.canonicalize()
+        .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to resolve path: {}", e)))?;
+
+    if !canonical_path.starts_with(root) {
+        return Err(FileExplorerError::InvalidPath(
+            "Access denied: path is outside the allowed directory".to_string()
+        ));
+    }
+    Ok(canonical_path)
 }
 
 // Windows-specific: hide console window when spawning external commands
@@ -288,13 +292,14 @@ pub fn grant_directory_access(app: AppHandle, path: String) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn get_directory_entries(path: String) -> Result<Vec<FileEntry>> {
+pub fn get_directory_entries(app: AppHandle, path: String) -> Result<Vec<FileEntry>> {
     // Handle system root
     if path == SYSTEM_ROOT_PATH {
         return get_system_root_entries();
     }
 
     let dir_path = Path::new(&path);
+    verify_path_within_root(&app, dir_path)?;
 
     if !dir_path.exists() {
         return Err(FileExplorerError::PathNotFound(path));
@@ -316,8 +321,9 @@ pub fn get_directory_entries(path: String) -> Result<Vec<FileEntry>> {
 }
 
 #[tauri::command]
-pub fn create_directory(path: String) -> Result<()> {
+pub fn create_directory(app: AppHandle, path: String) -> Result<()> {
     let dir_path = Path::new(&path);
+    verify_path_within_root(&app, dir_path)?;
 
     if dir_path.exists() {
         return Err(FileExplorerError::AlreadyExists(path));
@@ -328,8 +334,9 @@ pub fn create_directory(path: String) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn delete_entry(path: String, #[allow(unused_variables)] recursive: bool) -> Result<()> {
+pub fn delete_entry(app: AppHandle, path: String, #[allow(unused_variables)] recursive: bool) -> Result<()> {
     let entry_path = Path::new(&path);
+    verify_path_within_root(&app, entry_path)?;
 
     if !entry_path.exists() {
         return Err(FileExplorerError::PathNotFound(path));
@@ -346,8 +353,9 @@ pub fn delete_entry(path: String, #[allow(unused_variables)] recursive: bool) ->
 }
 
 #[tauri::command]
-pub fn rename_entry(old_path: String, new_name: String) -> Result<()> {
+pub fn rename_entry(app: AppHandle, old_path: String, new_name: String) -> Result<()> {
     let old = Path::new(&old_path);
+    verify_path_within_root(&app, old)?;
 
     if !old.exists() {
         return Err(FileExplorerError::PathNotFound(old_path));
@@ -358,6 +366,7 @@ pub fn rename_entry(old_path: String, new_name: String) -> Result<()> {
     })?;
 
     let new = parent.join(&new_name);
+    verify_path_within_root(&app, &new)?;
 
     if new.exists() {
         return Err(FileExplorerError::AlreadyExists(new_name));
@@ -368,9 +377,11 @@ pub fn rename_entry(old_path: String, new_name: String) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn copy_file(source: String, dest: String) -> Result<()> {
+pub fn copy_file(app: AppHandle, source: String, dest: String) -> Result<()> {
     let src_path = Path::new(&source);
     let dest_path = Path::new(&dest);
+    verify_path_within_root(&app, src_path)?;
+    verify_path_within_root(&app, dest_path)?;
 
     if !src_path.exists() {
         return Err(FileExplorerError::PathNotFound(source));
@@ -417,6 +428,8 @@ pub async fn copy_entry_async(
 ) -> Result<()> {
     let src_path = Path::new(&source).to_path_buf();
     let dest_path = Path::new(&dest).to_path_buf();
+    verify_path_within_root(&app, &src_path)?;
+    verify_path_within_root(&app, &dest_path)?;
 
     if !src_path.exists() {
         return Err(FileExplorerError::PathNotFound(source));
@@ -656,9 +669,11 @@ pub fn cancel_copy_task(task_id: String) -> bool {
 
 /// Legacy sync copy (kept for backward compatibility)
 #[tauri::command]
-pub fn copy_entry(source: String, dest: String) -> Result<()> {
+pub fn copy_entry(app: AppHandle, source: String, dest: String) -> Result<()> {
     let src_path = Path::new(&source);
     let dest_path = Path::new(&dest);
+    verify_path_within_root(&app, src_path)?;
+    verify_path_within_root(&app, dest_path)?;
 
     if !src_path.exists() {
         return Err(FileExplorerError::PathNotFound(source));
@@ -688,8 +703,9 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn read_file_as_base64(path: String) -> Result<String> {
+pub fn read_file_as_base64(app: AppHandle, path: String) -> Result<String> {
     let file_path = Path::new(&path);
+    verify_path_within_root(&app, file_path)?;
 
     if !file_path.exists() {
         return Err(FileExplorerError::PathNotFound(path));
@@ -712,8 +728,9 @@ pub fn read_file_as_base64(path: String) -> Result<String> {
 }
 
 #[tauri::command]
-pub fn read_file_content(path: String) -> Result<String> {
+pub fn read_file_content(app: AppHandle, path: String) -> Result<String> {
     let file_path = Path::new(&path);
+    verify_path_within_root(&app, file_path)?;
 
     if !file_path.exists() {
         return Err(FileExplorerError::PathNotFound(path));
@@ -736,8 +753,9 @@ pub fn read_file_content(path: String) -> Result<String> {
 }
 
 #[tauri::command]
-pub fn create_file(path: String) -> Result<()> {
+pub fn create_file(app: AppHandle, path: String) -> Result<()> {
     let file_path = Path::new(&path);
+    verify_path_within_root(&app, file_path)?;
 
     if file_path.exists() {
         return Err(FileExplorerError::AlreadyExists(path));
@@ -748,8 +766,9 @@ pub fn create_file(path: String) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn search_files(directory: String, query: String) -> Result<Vec<FileEntry>> {
+pub fn search_files(app: AppHandle, directory: String, query: String) -> Result<Vec<FileEntry>> {
     let dir_path = Path::new(&directory);
+    verify_path_within_root(&app, dir_path)?;
 
     if !dir_path.exists() {
         return Err(FileExplorerError::PathNotFound(directory));
@@ -791,11 +810,13 @@ pub fn search_files(directory: String, query: String) -> Result<Vec<FileEntry>> 
 /// Async search with cancellation support
 #[tauri::command]
 pub async fn search_files_async(
+    app: AppHandle,
     search_id: String,
     directory: String,
     query: String,
 ) -> Result<Vec<FileEntry>> {
     let dir_path = Path::new(&directory).to_path_buf();
+    verify_path_within_root(&app, &dir_path)?;
 
     if !dir_path.exists() {
         return Err(FileExplorerError::PathNotFound(directory));
@@ -881,15 +902,18 @@ pub fn cancel_search(search_id: String) -> bool {
 }
 
 #[tauri::command]
-pub fn check_path_exists(path: String) -> Result<bool> {
+pub fn check_path_exists(app: AppHandle, path: String) -> Result<bool> {
+    verify_path_within_root(&app, Path::new(&path))?;
     Ok(Path::new(&path).exists())
 }
 
 /// Move a file or directory to a new location
 #[tauri::command]
-pub fn move_entry(source: String, dest: String) -> Result<()> {
+pub fn move_entry(app: AppHandle, source: String, dest: String) -> Result<()> {
     let src_path = Path::new(&source);
     let dest_path = Path::new(&dest);
+    verify_path_within_root(&app, src_path)?;
+    verify_path_within_root(&app, dest_path)?;
 
     if !src_path.exists() {
         return Err(FileExplorerError::PathNotFound(source));
@@ -1067,4 +1091,180 @@ pub fn open_with_editor(app: AppHandle, path: String, editor_id: String) -> Resu
         .map_err(|e| FileExplorerError::InvalidPath(format!("Failed to launch editor: {}", e)))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// Helper to create a temp directory tree for testing
+    struct TestEnv {
+        root: tempfile::TempDir,
+    }
+
+    impl TestEnv {
+        fn new() -> Self {
+            let root = tempfile::tempdir().expect("Failed to create temp dir");
+            // Create some files/dirs inside root
+            fs::create_dir_all(root.path().join("subdir")).expect("Failed to create subdir");
+            fs::write(root.path().join("test.txt"), "hello").expect("Failed to write test file");
+            fs::write(root.path().join("subdir/nested.txt"), "nested").expect("Failed to write nested file");
+            Self { root }
+        }
+
+        fn root_path(&self) -> &Path {
+            self.root.path()
+        }
+
+        fn canonical_root(&self) -> std::path::PathBuf {
+            self.root_path().canonicalize().expect("Failed to canonicalize root")
+        }
+    }
+
+    // ── is_path_within_root: core validation logic ──
+
+    #[test]
+    fn path_within_root_passes() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+        let file_path = env.root_path().join("test.txt");
+
+        let result = is_path_within_root(&root, &file_path);
+        assert!(result.is_ok(), "Path within root should pass");
+        let canonical = result.unwrap();
+        assert!(canonical.starts_with(&root));
+    }
+
+    #[test]
+    fn nested_path_within_root_passes() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+        let nested = env.root_path().join("subdir/nested.txt");
+
+        let result = is_path_within_root(&root, &nested);
+        assert!(result.is_ok(), "Nested path within root should pass");
+    }
+
+    #[test]
+    fn path_outside_root_rejected() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+
+        // Create another temp dir as "outside"
+        let outside_dir = tempfile::tempdir().expect("Failed to create outside dir");
+        let result = is_path_within_root(&root, outside_dir.path());
+        assert!(result.is_err(), "Path outside root should be rejected");
+    }
+
+    #[test]
+    fn path_traversal_with_dotdot_rejected() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+
+        // Try to escape root via ..
+        let traversal = env.root_path().join("subdir/../../..");
+
+        let result = is_path_within_root(&root, &traversal);
+        assert!(result.is_err(), "Path traversal with .. should be rejected");
+    }
+
+    #[test]
+    fn non_existent_path_rejected() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+
+        let nonexistent = env.root_path().join("does_not_exist_at_all");
+
+        let result = is_path_within_root(&root, &nonexistent);
+        assert!(result.is_err(), "Non-existent path should fail canonicalize");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Failed to resolve path"), "Expected resolve error, got: {}", err_msg);
+    }
+
+    #[test]
+    fn root_path_itself_passes() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+
+        let result = is_path_within_root(&root, env.root_path());
+        assert!(result.is_ok(), "Root path itself should pass");
+        let canonical = result.unwrap();
+        assert_eq!(canonical, root);
+    }
+
+    #[test]
+    fn directory_within_root_passes() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+        let subdir = env.root_path().join("subdir");
+
+        let result = is_path_within_root(&root, &subdir);
+        assert!(result.is_ok(), "Directory within root should pass");
+    }
+
+    #[test]
+    fn symlink_pointing_outside_rejected() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+
+        // Create an outside directory with a file
+        let outside_dir = tempfile::tempdir().expect("Failed to create outside dir");
+        fs::write(outside_dir.path().join("secret.txt"), "secret").expect("write failed");
+
+        // Create symlink inside root pointing outside
+        #[cfg(windows)]
+        {
+            let link_result = std::os::windows::fs::symlink_dir(
+                outside_dir.path(),
+                env.root_path().join("evil_link"),
+            );
+            if link_result.is_err() {
+                eprintln!("Skipping symlink test (requires admin on Windows)");
+                return;
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            std::os::unix::fs::symlink(
+                outside_dir.path(),
+                env.root_path().join("evil_link"),
+            ).expect("Failed to create symlink");
+        }
+
+        let link_path = env.root_path().join("evil_link");
+        let result = is_path_within_root(&root, &link_path);
+
+        assert!(result.is_err(), "Symlink pointing outside root should be rejected");
+    }
+
+    #[test]
+    fn symlink_pointing_inside_passes() {
+        let env = TestEnv::new();
+        let root = env.canonical_root();
+
+        // Create symlink inside root pointing to another dir inside root
+        #[cfg(windows)]
+        {
+            let link_result = std::os::windows::fs::symlink_dir(
+                env.root_path().join("subdir"),
+                env.root_path().join("good_link"),
+            );
+            if link_result.is_err() {
+                eprintln!("Skipping symlink test (requires admin on Windows)");
+                return;
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            std::os::unix::fs::symlink(
+                env.root_path().join("subdir"),
+                env.root_path().join("good_link"),
+            ).expect("Failed to create symlink");
+        }
+
+        let link_path = env.root_path().join("good_link");
+        let result = is_path_within_root(&root, &link_path);
+        assert!(result.is_ok(), "Symlink pointing inside root should pass");
+    }
 }
